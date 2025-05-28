@@ -73,6 +73,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 400;
+    final padding = isSmallScreen ? 16.0 : 20.0;
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -84,348 +89,413 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              // Premium Header Section
-              Container(
-                margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 30,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // Status Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Emergency Response",
-                              style: GoogleFonts.inter(
-                                fontSize: 16,
-                                color: const Color(0xFF64748B),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                AnimatedBuilder(
-                                  animation: _pulseAnimation,
-                                  builder: (context, child) {
-                                    return Transform.scale(
-                                      scale:
-                                          isOnline
-                                              ? _pulseAnimation.value
-                                              : 1.0,
-                                      child: Container(
-                                        width: 12,
-                                        height: 12,
-                                        decoration: BoxDecoration(
-                                          color:
-                                              isOnline
-                                                  ? const Color(0xFF10B981)
-                                                  : const Color(0xFFEF4444),
-                                          shape: BoxShape.circle,
-                                          boxShadow:
-                                              isOnline
-                                                  ? [
-                                                    BoxShadow(
-                                                      color: const Color(
-                                                        0xFF10B981,
-                                                      ).withOpacity(0.4),
-                                                      blurRadius: 8,
-                                                      spreadRadius: 2,
-                                                    ),
-                                                  ]
-                                                  : [],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  isOnline ? "ONLINE & READY" : "OFFLINE",
-                                  style: GoogleFonts.inter(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color:
-                                        isOnline
-                                            ? const Color(0xFF10B981)
-                                            : const Color(0xFFEF4444),
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        // Profile Avatar
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF4F46E5).withOpacity(0.3),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            FontAwesomeIcons.userDoctor,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight:
+                    screenHeight -
+                    MediaQuery.of(context).padding.top -
+                    MediaQuery.of(context).padding.bottom,
+              ),
+              child: Column(
+                children: [
+                  // Premium Header Section
+                  Container(
+                    margin: EdgeInsets.all(padding),
+                    padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(
+                        isSmallScreen ? 16 : 24,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 30,
+                          offset: const Offset(0, 10),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
-
-                    // Toggle Button
-                    GestureDetector(
-                      onTap: toggleOnline,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 16,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors:
-                                isOnline
-                                    ? [
-                                      const Color(0xFF10B981),
-                                      const Color(0xFF059669),
-                                    ]
-                                    : [
-                                      const Color(0xFFEF4444),
-                                      const Color(0xFFDC2626),
-                                    ],
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: (isOnline
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFEF4444))
-                                  .withOpacity(0.4),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    child: Column(
+                      children: [
+                        // Status Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 300),
-                              child: Icon(
-                                isOnline
-                                    ? FontAwesomeIcons.powerOff
-                                    : FontAwesomeIcons.play,
-                                key: ValueKey(isOnline),
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              isOnline ? "Go Offline" : "Go Online",
-                              style: GoogleFonts.inter(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Statistics Cards Row
-              Container(
-                height: 120,
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        "Shift Time",
-                        "3h 24m",
-                        FontAwesomeIcons.clock,
-                        const Color(0xFF4F46E5),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        "Location",
-                        "Accra, GH",
-                        FontAwesomeIcons.locationDot,
-                        const Color(0xFF10B981),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        "Calls Today",
-                        "7",
-                        FontAwesomeIcons.phone,
-                        const Color(0xFFF59E0B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Emergency Alerts Section
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(32),
-                      topRight: Radius.circular(32),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 30,
-                        offset: const Offset(0, -10),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Section Header
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        child: Row(
-                          children: [
-                            AnimatedBuilder(
-                              animation: _heartbeatAnimation,
-                              builder: (context, child) {
-                                return Transform.scale(
-                                  scale: _heartbeatAnimation.value,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFFEF4444),
-                                          Color(0xFFDC2626),
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(16),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: const Color(
-                                            0xFFEF4444,
-                                          ).withOpacity(0.4),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      FontAwesomeIcons.heartPulse,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    "Emergency Alerts",
+                                    "Emergency Response",
                                     style: GoogleFonts.inter(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      color: const Color(0xFF1A1D29),
+                                      fontSize: isSmallScreen ? 14 : 16,
+                                      color: const Color(0xFF64748B),
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  Text(
-                                    "Real-time emergency responses",
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
-                                      color: const Color(0xFF64748B),
-                                    ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      AnimatedBuilder(
+                                        animation: _pulseAnimation,
+                                        builder: (context, child) {
+                                          return Transform.scale(
+                                            scale:
+                                                isOnline
+                                                    ? _pulseAnimation.value
+                                                    : 1.0,
+                                            child: Container(
+                                              width: isSmallScreen ? 10 : 12,
+                                              height: isSmallScreen ? 10 : 12,
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    isOnline
+                                                        ? const Color(
+                                                          0xFF10B981,
+                                                        )
+                                                        : const Color(
+                                                          0xFFEF4444,
+                                                        ),
+                                                shape: BoxShape.circle,
+                                                boxShadow:
+                                                    isOnline
+                                                        ? [
+                                                          BoxShadow(
+                                                            color: const Color(
+                                                              0xFF10B981,
+                                                            ).withOpacity(0.4),
+                                                            blurRadius: 8,
+                                                            spreadRadius: 2,
+                                                          ),
+                                                        ]
+                                                        : [],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          isOnline
+                                              ? "ONLINE & READY"
+                                              : "OFFLINE",
+                                          style: GoogleFonts.inter(
+                                            fontSize: isSmallScreen ? 14 : 18,
+                                            fontWeight: FontWeight.w700,
+                                            color:
+                                                isOnline
+                                                    ? const Color(0xFF10B981)
+                                                    : const Color(0xFFEF4444),
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
+                            // Profile Avatar
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
+                              padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEF4444).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                "2 Active",
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: const Color(0xFFEF4444),
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF4F46E5),
+                                    Color(0xFF7C3AED),
+                                  ],
                                 ),
+                                borderRadius: BorderRadius.circular(
+                                  isSmallScreen ? 12 : 16,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF4F46E5,
+                                    ).withOpacity(0.3),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                FontAwesomeIcons.userDoctor,
+                                color: Colors.white,
+                                size: isSmallScreen ? 16 : 20,
                               ),
                             ),
                           ],
                         ),
-                      ),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
 
-                      // Emergency Cards List
-                      Expanded(
-                        child:
-                            isOnline
-                                ? ListView.builder(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
+                        // Toggle Button
+                        GestureDetector(
+                          onTap: toggleOnline,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isSmallScreen ? 20 : 24,
+                              vertical: isSmallScreen ? 12 : 16,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors:
+                                    isOnline
+                                        ? [
+                                          const Color(0xFF10B981),
+                                          const Color(0xFF059669),
+                                        ]
+                                        : [
+                                          const Color(0xFFEF4444),
+                                          const Color(0xFFDC2626),
+                                        ],
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                isSmallScreen ? 16 : 20,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (isOnline
+                                          ? const Color(0xFF10B981)
+                                          : const Color(0xFFEF4444))
+                                      .withOpacity(0.4),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  child: Icon(
+                                    isOnline
+                                        ? FontAwesomeIcons.powerOff
+                                        : FontAwesomeIcons.play,
+                                    key: ValueKey(isOnline),
+                                    color: Colors.white,
+                                    size: isSmallScreen ? 14 : 18,
                                   ),
-                                  itemCount: 3,
-                                  itemBuilder:
-                                      (context, index) =>
-                                          _buildPremiumEmergencyCard(index),
-                                )
-                                : _buildOfflineState(),
-                      ),
-                    ],
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  isOnline ? "Go Offline" : "Go Online",
+                                  style: GoogleFonts.inter(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: isSmallScreen ? 14 : 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+
+                  // Statistics Cards Row
+                  Container(
+                    margin: EdgeInsets.symmetric(horizontal: padding),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final cardSpacing = isSmallScreen ? 8.0 : 12.0;
+                        final availableWidth =
+                            constraints.maxWidth - (cardSpacing * 2);
+                        final cardWidth = availableWidth / 3;
+
+                        return IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatCard(
+                                  "Shift Time",
+                                  "3h 24m",
+                                  FontAwesomeIcons.clock,
+                                  const Color(0xFF4F46E5),
+                                  isSmallScreen,
+                                ),
+                              ),
+                              SizedBox(width: cardSpacing),
+                              Expanded(
+                                child: _buildStatCard(
+                                  "Location",
+                                  "Accra, GH",
+                                  FontAwesomeIcons.locationDot,
+                                  const Color(0xFF10B981),
+                                  isSmallScreen,
+                                ),
+                              ),
+                              SizedBox(width: cardSpacing),
+                              Expanded(
+                                child: _buildStatCard(
+                                  "Calls Today",
+                                  "7",
+                                  FontAwesomeIcons.phone,
+                                  const Color(0xFFF59E0B),
+                                  isSmallScreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  SizedBox(height: isSmallScreen ? 20 : 32),
+
+                  // Emergency Alerts Section
+                  Container(
+                    constraints: BoxConstraints(
+                      minHeight:
+                          screenHeight *
+                          0.4, // Minimum height for emergency section
+                    ),
+                    margin: EdgeInsets.symmetric(horizontal: padding),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(isSmallScreen ? 20 : 32),
+                        topRight: Radius.circular(isSmallScreen ? 20 : 32),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 30,
+                          offset: const Offset(0, -10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Section Header
+                        Container(
+                          padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+                          child: Row(
+                            children: [
+                              AnimatedBuilder(
+                                animation: _heartbeatAnimation,
+                                builder: (context, child) {
+                                  return Transform.scale(
+                                    scale: _heartbeatAnimation.value,
+                                    child: Container(
+                                      padding: EdgeInsets.all(
+                                        isSmallScreen ? 8 : 12,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFEF4444),
+                                            Color(0xFFDC2626),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          isSmallScreen ? 12 : 16,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(
+                                              0xFFEF4444,
+                                            ).withOpacity(0.4),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Icon(
+                                        FontAwesomeIcons.heartPulse,
+                                        color: Colors.white,
+                                        size: isSmallScreen ? 16 : 20,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Emergency Alerts",
+                                      style: GoogleFonts.inter(
+                                        fontSize: isSmallScreen ? 16 : 20,
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFF1A1D29),
+                                      ),
+                                    ),
+                                    Text(
+                                      "Real-time emergency responses",
+                                      style: GoogleFonts.inter(
+                                        fontSize: isSmallScreen ? 12 : 14,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isSmallScreen ? 8 : 12,
+                                  vertical: isSmallScreen ? 4 : 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFFEF4444,
+                                  ).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  "2 Active",
+                                  style: GoogleFonts.inter(
+                                    fontSize: isSmallScreen ? 10 : 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFFEF4444),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Emergency Cards List
+                        Flexible(
+                          child:
+                              isOnline
+                                  ? ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: isSmallScreen ? 16 : 24,
+                                    ),
+                                    itemCount: 3,
+                                    itemBuilder:
+                                        (context, index) =>
+                                            _buildPremiumEmergencyCard(
+                                              index,
+                                              isSmallScreen,
+                                            ),
+                                  )
+                                  : _buildOfflineState(isSmallScreen),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Bottom spacing
+                  SizedBox(height: padding),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -437,12 +507,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     String value,
     IconData icon,
     Color color,
+    bool isSmallScreen,
   ) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -453,20 +524,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: EdgeInsets.all(isSmallScreen ? 6 : 8),
             decoration: BoxDecoration(
               color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(isSmallScreen ? 8 : 10),
             ),
-            child: Icon(icon, color: color, size: 18),
+            child: Icon(icon, color: color, size: isSmallScreen ? 14 : 18),
           ),
-          const Spacer(),
+          SizedBox(height: isSmallScreen ? 8 : 12),
           Text(
             value,
             style: GoogleFonts.inter(
-              fontSize: 18,
+              fontSize: isSmallScreen ? 14 : 18,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF1A1D29),
             ),
@@ -474,17 +546,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Text(
             title,
             style: GoogleFonts.inter(
-              fontSize: 12,
+              fontSize: isSmallScreen ? 10 : 12,
               color: const Color(0xFF64748B),
               fontWeight: FontWeight.w500,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPremiumEmergencyCard(int index) {
+  Widget _buildPremiumEmergencyCard(int index, bool isSmallScreen) {
     final emergencies = [
       {
         'type': 'Car Accident',
@@ -515,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final emergency = emergencies[index];
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: isSmallScreen ? 12 : 16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -525,7 +599,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             (emergency['color'] as Color).withOpacity(0.02),
           ],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20),
         border: Border.all(
           color: (emergency['color'] as Color).withOpacity(0.1),
           width: 1,
@@ -539,16 +613,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 6 : 8,
+                    vertical: isSmallScreen ? 3 : 4,
                   ),
                   decoration: BoxDecoration(
                     color: emergency['color'] as Color,
@@ -557,7 +631,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Text(
                     emergency['severity'] as String,
                     style: GoogleFonts.inter(
-                      fontSize: 10,
+                      fontSize: isSmallScreen ? 8 : 10,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                       letterSpacing: 0.5,
@@ -568,42 +642,44 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Text(
                   emergency['time'] as String,
                   style: GoogleFonts.inter(
-                    fontSize: 12,
+                    fontSize: isSmallScreen ? 10 : 12,
                     color: const Color(0xFF64748B),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: isSmallScreen ? 8 : 12),
             Text(
               emergency['type'] as String,
               style: GoogleFonts.inter(
-                fontSize: 18,
+                fontSize: isSmallScreen ? 16 : 18,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF1A1D29),
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isSmallScreen ? 6 : 8),
             Row(
               children: [
                 Icon(
                   FontAwesomeIcons.locationDot,
-                  size: 14,
+                  size: isSmallScreen ? 12 : 14,
                   color: emergency['color'] as Color,
                 ),
                 const SizedBox(width: 6),
-                Text(
-                  emergency['location'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: const Color(0xFF64748B),
+                Expanded(
+                  child: Text(
+                    emergency['location'] as String,
+                    style: GoogleFonts.inter(
+                      fontSize: isSmallScreen ? 12 : 14,
+                      color: const Color(0xFF64748B),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 6 : 8,
+                    vertical: isSmallScreen ? 3 : 4,
                   ),
                   decoration: BoxDecoration(
                     color: (emergency['color'] as Color).withOpacity(0.1),
@@ -612,7 +688,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   child: Text(
                     emergency['distance'] as String,
                     style: GoogleFonts.inter(
-                      fontSize: 12,
+                      fontSize: isSmallScreen ? 10 : 12,
                       fontWeight: FontWeight.w600,
                       color: emergency['color'] as Color,
                     ),
@@ -620,12 +696,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isSmallScreen ? 12 : 16),
             Row(
               children: [
                 Expanded(
                   child: Container(
-                    height: 44,
+                    height: isSmallScreen ? 40 : 44,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -636,10 +712,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: ElevatedButton.icon(
-                      icon: const Icon(FontAwesomeIcons.check, size: 16),
+                      icon: Icon(
+                        FontAwesomeIcons.check,
+                        size: isSmallScreen ? 14 : 16,
+                      ),
                       label: Text(
                         "Accept",
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          fontSize: isSmallScreen ? 12 : 14,
+                        ),
                       ),
                       onPressed: () {},
                       style: ElevatedButton.styleFrom(
@@ -655,16 +737,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(width: 12),
                 Container(
-                  height: 44,
-                  width: 44,
+                  height: isSmallScreen ? 40 : 44,
+                  width: isSmallScreen ? 40 : 44,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       FontAwesomeIcons.ellipsisVertical,
-                      size: 16,
+                      size: isSmallScreen ? 14 : 16,
                     ),
                     color: const Color(0xFF64748B),
                     onPressed: () {},
@@ -678,40 +760,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildOfflineState() {
+  Widget _buildOfflineState(bool isSmallScreen) {
     return Container(
-      padding: const EdgeInsets.all(40),
+      padding: EdgeInsets.all(isSmallScreen ? 24 : 40),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.all(isSmallScreen ? 20 : 24),
             decoration: BoxDecoration(
               color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(isSmallScreen ? 20 : 24),
             ),
-            child: const Icon(
+            child: Icon(
               FontAwesomeIcons.powerOff,
-              size: 48,
-              color: Color(0xFF64748B),
+              size: isSmallScreen ? 32 : 48,
+              color: const Color(0xFF64748B),
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: isSmallScreen ? 16 : 24),
           Text(
             "You're Currently Offline",
             style: GoogleFonts.inter(
-              fontSize: 20,
+              fontSize: isSmallScreen ? 16 : 20,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF1A1D29),
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: isSmallScreen ? 6 : 8),
           Text(
             "Go online to start receiving emergency calls",
             style: GoogleFonts.inter(
-              fontSize: 14,
+              fontSize: isSmallScreen ? 12 : 14,
               color: const Color(0xFF64748B),
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
