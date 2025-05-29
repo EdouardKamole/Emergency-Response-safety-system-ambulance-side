@@ -18,7 +18,6 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
     HomeScreen(),
     LiveTrackingScreen(),
     PatientCareScreen(),
-    // HistoryScreen(),
     ProfileScreen(),
   ];
 

@@ -60,6 +60,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "459911736231-2agoll7pk18lfq6m01978ler68d5q01h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_response_safety_system_ambulance_side",
+            "certificate_hash": "f897f3e588f4ef6444c348601e911c1da798e30b"
+          }
+        },
+        {
+          "client_id": "459911736231-qaokub1lvesipvg5oa79krq71bsf6n4n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_response_safety_system_ambulance_side",
+            "certificate_hash": "97e39f3b1b1ad5fa20ade3c6dddc55dba53fa855"
+          }
+        },
+        {
           "client_id": "459911736231-psg307ohncc0r8bnb3f17cqqfii5rbs8.apps.googleusercontent.com",
           "client_type": 3
         }

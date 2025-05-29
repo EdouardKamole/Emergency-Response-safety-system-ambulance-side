@@ -1,3 +1,5 @@
+import 'package:emergency_response_safety_system_ambulance_side/screens/login_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/emergency_detail_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/patient_care_screen.dart';
@@ -6,9 +8,10 @@ import 'package:emergency_response_safety_system_ambulance_side/screens/history_
 import 'package:emergency_response_safety_system_ambulance_side/screens/profile_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/settings_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/live_tracking_screen.dart';
-import 'package:emergency_response_safety_system_ambulance_side/widgets/bottom_nav.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const EmergencyAmbulanceApp());
 }
 
@@ -25,7 +28,7 @@ class EmergencyAmbulanceApp extends StatelessWidget {
         fontFamily: 'Roboto',
         scaffoldBackgroundColor: Colors.white,
       ),
-      home: BottomNavWrapper(),
+      home: LoginScreen(),
       routes: {
         '/home': (context) => const HomeScreen(),
         '/details': (context) => const EmergencyDetailScreen(),
@@ -34,6 +37,7 @@ class EmergencyAmbulanceApp extends StatelessWidget {
         '/history': (context) => HistoryScreen(),
         '/profile': (context) => ProfileScreen(),
         '/settings': (context) => SettingsScreen(),
+        '/login': (context) => LoginScreen(),
       },
     );
   }
