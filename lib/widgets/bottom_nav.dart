@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/live_tracking_screen.dart';
-import '../screens/patient_care_screen.dart'; // Add this import
-import '../screens/history_screen.dart';
+import '../screens/patient_care_screen.dart';
 import '../screens/profile_screen.dart';
 
 class BottomNavWrapper extends StatefulWidget {
@@ -18,8 +17,8 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
   final List<Widget> _screens = [
     HomeScreen(),
     LiveTrackingScreen(),
-    PatientCareScreen(), // Add this screen
-    HistoryScreen(),
+    PatientCareScreen(),
+    // HistoryScreen(),
     ProfileScreen(),
   ];
 

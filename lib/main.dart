@@ -25,7 +25,7 @@ class EmergencyAmbulanceApp extends StatelessWidget {
         fontFamily: 'Roboto',
         scaffoldBackgroundColor: Colors.white,
       ),
-      home: BottomNavWrapper(), // ✅ Add const if BottomNavWrapper allows it
+      home: BottomNavWrapper(),
       routes: {
         '/home': (context) => const HomeScreen(),
         '/details': (context) => const EmergencyDetailScreen(),
