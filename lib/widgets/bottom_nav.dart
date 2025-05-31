@@ -16,7 +16,11 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
 
   final List<Widget> _screens = [
     HomeScreen(),
-    LiveTrackingScreen(),
+    LiveTrackingScreen(
+      reportId: 'some_report_id',
+      emergencyLat: 0.0,
+      emergencyLon: 0.0,
+    ), // Replace with actual values
     PatientCareScreen(),
     ProfileScreen(),
   ];

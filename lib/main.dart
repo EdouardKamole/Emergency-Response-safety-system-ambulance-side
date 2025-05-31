@@ -32,7 +32,12 @@ class EmergencyAmbulanceApp extends StatelessWidget {
       routes: {
         '/home': (context) => const HomeScreen(),
         '/details': (context) => const EmergencyDetailScreen(),
-        '/tracking': (context) => LiveTrackingScreen(),
+        '/tracking':
+            (context) => LiveTrackingScreen(
+              reportId: 'dummy',
+              emergencyLat: 0.0,
+              emergencyLon: 0.0,
+            ),
         '/care': (context) => PatientCareScreen(),
         '/history': (context) => HistoryScreen(),
         '/profile': (context) => ProfileScreen(),
