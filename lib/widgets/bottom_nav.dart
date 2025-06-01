@@ -8,27 +8,80 @@ class BottomNavWrapper extends StatefulWidget {
   const BottomNavWrapper({super.key});
 
   @override
-  _BottomNavWrapperState createState() => _BottomNavWrapperState();
+  State<BottomNavWrapper> createState() => _BottomNavWrapperState();
 }
 
 class _BottomNavWrapperState extends State<BottomNavWrapper> {
   int _currentIndex = 0;
+  Map<String, dynamic>? _selectedReport;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  final List<Widget> _screens = [
-    HomeScreen(),
-    LiveTrackingScreen(
-      reportId: 'some_report_id',
-      emergencyLat: 0.0,
-      emergencyLon: 0.0,
-    ), // Replace with actual values
-    PatientCareScreen(),
-    ProfileScreen(),
-  ];
+  void _updateSelectedReport(Map<String, dynamic> report) {
+    debugPrint("Updating selected report: $report");
+    setState(() {
+      _selectedReport = report;
+      _currentIndex = 1;
+    });
+    debugPrint(
+      "After setState: currentIndex=$_currentIndex, selectedReport=$_selectedReport",
+    );
+    // Fallback navigation if tab switch fails
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_currentIndex != 1) {
+        debugPrint("Fallback: Pushing LiveTrackingScreen directly");
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => LiveTrackingScreen(
+                  reportId: report['reportId'] as String,
+                  emergencyLat: (report['latitude'] as num?)?.toDouble() ?? 0.0,
+                  emergencyLon:
+                      (report['longitude'] as num?)?.toDouble() ?? 0.0,
+                ),
+          ),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Fallback navigation used: Tab switch failed"),
+          ),
+        );
+      }
+    });
+  }
+
+  Widget _getTrackingScreen() {
+    debugPrint("getTrackingScreen called, selectedReport: $_selectedReport");
+    if (_selectedReport == null) {
+      return const Center(
+        child: Text(
+          'Select an emergency report from Home to start tracking',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+    debugPrint("Rendering LiveTrackingScreen with report: $_selectedReport");
+    return LiveTrackingScreen(
+      reportId: _selectedReport!['reportId'] as String,
+      emergencyLat: (_selectedReport!['latitude'] as num?)?.toDouble() ?? 0.0,
+      emergencyLon: (_selectedReport!['longitude'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("Building BottomNavWrapper, currentIndex: $_currentIndex");
+    final screens = [
+      HomeScreen(onReportSelected: _updateSelectedReport),
+      _getTrackingScreen(),
+      const PatientCareScreen(),
+      const ProfileScreen(),
+    ];
+
     return Scaffold(
-      body: _screens[_currentIndex],
+      key: _scaffoldKey,
+      body: screens[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -37,7 +90,7 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
               color: Colors.black.withOpacity(0.1),
               blurRadius: 10,
               spreadRadius: 2,
-              offset: Offset(0, -2),
+              offset: const Offset(0, -2),
             ),
           ],
         ),
@@ -48,18 +101,21 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
           unselectedItemColor: Colors.grey[500],
           backgroundColor: Colors.transparent,
           elevation: 0,
-          selectedLabelStyle: TextStyle(
+          selectedLabelStyle: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 12,
           ),
-          unselectedLabelStyle: TextStyle(
+          unselectedLabelStyle: const TextStyle(
             fontWeight: FontWeight.w500,
             fontSize: 11,
           ),
-          onTap: (index) => setState(() => _currentIndex = index),
+          onTap: (index) {
+            debugPrint("BottomNavigationBar tapped: index $index");
+            setState(() => _currentIndex = index);
+          },
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.home),
+              icon: Icon(Icons.home_outlined),
               activeIcon: Icon(Icons.home),
               label: 'Home',
             ),
@@ -72,11 +128,6 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
               icon: Icon(Icons.medical_services_outlined),
               activeIcon: Icon(Icons.medical_services),
               label: 'Care',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.history_outlined),
-              activeIcon: Icon(Icons.history),
-              label: 'History',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),

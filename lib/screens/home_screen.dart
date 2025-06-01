@@ -1,57 +1,53 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/live_tracking_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final Function(Map<String, dynamic>) onReportSelected;
+  const HomeScreen({super.key, required this.onReportSelected});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
-  bool isOnline = false;
   late AnimationController _pulseController;
-  late AnimationController _statusController;
   late AnimationController _heartbeatController;
   late Animation<double> _pulseAnimation;
-  late Animation<double> _statusAnimation;
   late Animation<double> _heartbeatAnimation;
   List<Map<String, dynamic>> emergencyReports = [];
+  Map<String, dynamic>? activeEmergency;
   bool isLoading = true;
   String? errorMessage;
   final user = FirebaseAuth.instance.currentUser;
   Position? _currentPosition;
   Timer? _locationUpdateTimer;
+  StreamSubscription<Position>? _locationSubscription;
 
   @override
   void initState() {
     super.initState();
 
-    // Pulse animation for online indicator
+    if (user == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacementNamed(context, '/login');
+      });
+      return;
+    }
+
+    // Pulse animation for header
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    // Status transition animation
-    _statusController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _statusAnimation = CurvedAnimation(
-      parent: _statusController,
-      curve: Curves.elasticOut,
     );
 
     // Heartbeat animation for emergency indicator
@@ -66,18 +62,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Request location permission
     _requestLocationPermission();
 
-    // Fetch emergency reports if online
-    if (isOnline) {
-      _fetchEmergencyReports();
-    }
+    // Fetch initial data
+    _checkActiveEmergency();
+    _fetchEmergencyReports();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _statusController.dispose();
     _heartbeatController.dispose();
     _locationUpdateTimer?.cancel();
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
@@ -124,181 +119,102 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _startLocationUpdates(
-    String reportId,
-    double emergencyLat,
-    double emergencyLon,
-  ) {
-    _locationUpdateTimer?.cancel(); // Cancel any existing timer
-    const interval = Duration(seconds: 5); // Update every 5 seconds
+  Future<void> _checkActiveEmergency() async {
+    if (!mounted || user == null) return;
 
-    _locationUpdateTimer = Timer.periodic(interval, (timer) async {
-      if (!mounted || user == null) {
-        timer.cancel();
-        return;
-      }
+    try {
+      final database = FirebaseDatabase.instance;
+      final snapshot = await database
+          .ref()
+          .child('reports')
+          .orderByChild('status')
+          .equalTo('accepted')
+          .get()
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception("Request timed out"),
+          );
 
-      final database = FirebaseDatabase.instance.ref();
-      final updateData = {
-        'latitude': _currentPosition?.latitude ?? (emergencyLat + 0.01),
-        'longitude': _currentPosition?.longitude ?? (emergencyLon + 0.01),
-        'timestamp': DateTime.now().toIso8601String(),
-        'eta': _calculateETA(
-          _currentPosition?.latitude ?? (emergencyLat + 0.01),
-          _currentPosition?.longitude ?? (emergencyLon + 0.01),
-          emergencyLat,
-          emergencyLon,
-        ),
-      };
+      if (!mounted) return;
 
-      // Update rescuer location in reports
-      await database
-          .child('reports/$reportId/assignedRescuer/${user!.uid}')
-          .update(updateData);
-
-      // Update rescuer location in activeRescuers
-      await database.child('activeRescuers/${user!.uid}').update({
-        ...updateData,
-        'status': 'en_route',
-      });
-
-      // Simulate movement if no real location is available
-      if (_currentPosition == null) {
-        _simulateRescuerUpdates(
-          reportId: reportId,
-          rescuerId: user!.uid,
-          emergencyLat: emergencyLat,
-          emergencyLon: emergencyLon,
-        );
-      }
-    });
-  }
-
-  void _simulateRescuerUpdates({
-    required String reportId,
-    required String rescuerId,
-    required double emergencyLat,
-    required double emergencyLon,
-  }) {
-    double currentLat = emergencyLat + 0.01; // Starting position
-    double currentLon = emergencyLon + 0.01;
-    const step = 0.001; // Move 0.001 degrees (~100m) per update
-    const interval = Duration(seconds: 5); // Update every 5 seconds
-
-    Timer.periodic(interval, (timer) async {
-      // Calculate distance to emergency
-      double distance = Geolocator.distanceBetween(
-        currentLat,
-        currentLon,
-        emergencyLat,
-        emergencyLon,
-      );
-
-      // Stop if close to emergency (within 100 meters)
-      if (distance < 100) {
-        timer.cancel();
-        final database = FirebaseDatabase.instance.ref();
-        await database
-            .child('reports/$reportId/assignedRescuer/$rescuerId')
-            .update({'status': 'arrived'});
-        await database.child('activeRescuers/$rescuerId').update({
-          'status': 'arrived',
+      if (snapshot.exists && snapshot.value != null) {
+        final reports = snapshot.value as Map<dynamic, dynamic>;
+        Map<String, dynamic>? foundEmergency;
+        reports.forEach((key, value) {
+          final report = Map<String, dynamic>.from(value as Map);
+          if (report['assignedRescuer'] != null &&
+              report['assignedRescuer'][user!.uid] != null) {
+            foundEmergency = {
+              'id': key,
+              'type': report['type'] ?? 'Unknown',
+              'severity': _determineSeverity(report['type']),
+              'time': _formatTime(report['location']?['timestamp']),
+              'location': report['location']?['address'] ?? 'Unknown Location',
+              'distance': _calculateDistance(
+                report['location']?['latitude'],
+                report['location']?['longitude'],
+              ),
+              'color': _getColorForType(report['type']),
+              'latitude': report['location']?['latitude'],
+              'longitude': report['location']?['longitude'],
+            };
+          }
         });
-        return;
+        if (mounted) {
+          setState(() {
+            activeEmergency = foundEmergency;
+          });
+        }
       }
-
-      // Move toward emergency
-      if (currentLat > emergencyLat) {
-        currentLat -= step;
-      } else if (currentLat < emergencyLat) {
-        currentLat += step;
+    } catch (e, stackTrace) {
+      if (mounted) {
+        setState(() {
+          errorMessage = "Error checking active emergency: $e";
+        });
       }
-      if (currentLon > emergencyLon) {
-        currentLon -= step;
-      } else if (currentLon < emergencyLon) {
-        currentLon += step;
-      }
-
-      // Calculate fake ETA based on distance (assuming 10 meters/second speed)
-      int etaSeconds = (distance / 10).round();
-
-      final database = FirebaseDatabase.instance.ref();
-      final updateData = {
-        'latitude': currentLat,
-        'longitude': currentLon,
-        'timestamp': DateTime.now().toIso8601String(),
-        'eta': etaSeconds,
-      };
-
-      // Update assignedRescuer
-      await database
-          .child('reports/$reportId/assignedRescuer/$rescuerId')
-          .update(updateData);
-
-      // Update activeRescuers
-      await database.child('activeRescuers/$rescuerId').update({
-        ...updateData,
-        'status': 'en_route',
-      });
-    });
-  }
-
-  int _calculateETA(
-    double? rescuerLat,
-    double? rescuerLon,
-    double emergencyLat,
-    double emergencyLon,
-  ) {
-    if (rescuerLat == null || rescuerLon == null) {
-      return 300; // Default 5 minutes if location unavailable
-    }
-    double distance = Geolocator.distanceBetween(
-      rescuerLat,
-      rescuerLon,
-      emergencyLat,
-      emergencyLon,
-    );
-    // Assume average speed of 10 meters/second (36 km/h)
-    return (distance / 10).round(); // ETA in seconds
-  }
-
-  void toggleOnline() {
-    setState(() {
-      isOnline = !isOnline;
-      isLoading = true;
-      errorMessage = null;
-      emergencyReports.clear();
-    });
-    if (isOnline) {
-      _statusController.forward();
-      _fetchEmergencyReports();
-    } else {
-      _statusController.reverse();
-      _locationUpdateTimer?.cancel(); // Stop location updates when offline
+      debugPrint(
+        "Error checking active emergency: $e\nStackTrace: $stackTrace",
+      );
     }
   }
 
   Future<void> _fetchEmergencyReports() async {
-    if (!isOnline || user == null) {
-      setState(() {
-        isLoading = false;
-        errorMessage = user == null ? "User not authenticated" : null;
-      });
+    if (!mounted || user == null) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          errorMessage = user == null ? "User not authenticated" : null;
+        });
+      }
       return;
     }
 
-    try {
-      // Fetch from Realtime Database
-      final database = FirebaseDatabase.instance.ref();
-      final snapshot = await database.child('reports').get();
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
 
-      if (snapshot.exists) {
+    try {
+      final database = FirebaseDatabase.instance;
+      final snapshot = await database
+          .ref()
+          .child('reports')
+          .orderByChild('status')
+          .equalTo('reported')
+          .get()
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception("Request timed out"),
+          );
+
+      if (!mounted) return;
+
+      if (snapshot.exists && snapshot.value != null) {
         final reports = snapshot.value as Map<dynamic, dynamic>;
         List<Map<String, dynamic>> tempReports = [];
         reports.forEach((key, value) {
-          final report = Map<String, dynamic>.from(value);
-          if (report['status'] == 'reported') {
-            // Only show pending reports
+          try {
+            final report = Map<String, dynamic>.from(value as Map);
             tempReports.add({
               'id': key,
               'type': report['type'] ?? 'Unknown',
@@ -313,30 +229,241 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               'latitude': report['location']?['latitude'],
               'longitude': report['location']?['longitude'],
             });
+          } catch (e) {
+            debugPrint("Error processing report $key: $e");
           }
         });
         if (mounted) {
           setState(() {
             emergencyReports = tempReports;
             isLoading = false;
+            errorMessage = null;
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Reports refreshed successfully")),
+          );
         }
       } else {
         if (mounted) {
           setState(() {
             emergencyReports = [];
             isLoading = false;
+            errorMessage = null;
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("No new reports available")),
+          );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (mounted) {
         setState(() {
           isLoading = false;
-          errorMessage = "Error fetching reports: $e";
+          errorMessage =
+              e.toString().contains("timeout")
+                  ? "No internet connection or server timeout"
+                  : "Error fetching reports: $e";
         });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMessage!)));
       }
+      debugPrint("Error fetching reports: $e\nStackTrace: $stackTrace");
     }
+  }
+
+  void _startLocationUpdates(
+    String reportId,
+    double emergencyLat,
+    double emergencyLon,
+  ) {
+    _locationUpdateTimer?.cancel();
+    _locationSubscription?.cancel();
+
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+      ),
+    ).listen((Position position) async {
+      if (!mounted || user == null) {
+        _locationSubscription?.cancel();
+        return;
+      }
+
+      try {
+        setState(() {
+          _currentPosition = position;
+        });
+
+        final database = FirebaseDatabase.instance;
+        final updateData = {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'timestamp': DateTime.now().toIso8601String(),
+          'eta': _calculateETA(
+            position.latitude,
+            position.longitude,
+            emergencyLat,
+            emergencyLon,
+          ),
+          'status': 'en_route',
+        };
+
+        await database
+            .ref()
+            .child('reports/$reportId/assignedRescuer/${user!.uid}')
+            .update(updateData);
+        await database
+            .ref()
+            .child('activeRescuers/${user!.uid}')
+            .update(updateData);
+
+        final distance = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          emergencyLat,
+          emergencyLon,
+        );
+        if (distance < 100) {
+          await database
+              .ref()
+              .child('reports/$reportId/assignedRescuer/${user!.uid}')
+              .update({'status': 'arrived'});
+          await database.ref().child('activeRescuers/${user!.uid}').update({
+            'status': 'arrived',
+          });
+          _locationSubscription?.cancel();
+          _checkActiveEmergency();
+        }
+      } catch (e) {
+        debugPrint("Error updating location: $e");
+      }
+    });
+  }
+
+  int _calculateETA(
+    double? rescuerLat,
+    double? rescuerLon,
+    double emergencyLat,
+    double emergencyLon,
+  ) {
+    if (rescuerLat == null || rescuerLon == null) {
+      return 300; // Default 5 minutes
+    }
+    final distance = Geolocator.distanceBetween(
+      rescuerLat,
+      rescuerLon,
+      emergencyLat,
+      emergencyLon,
+    );
+    // Assume 40 km/h (11.11 m/s)
+    final etaSeconds = (distance / 11.11).round();
+    return etaSeconds.clamp(60, 900); // 1–15 minutes
+  }
+
+  Future<void> _acceptEmergency(
+    String reportId,
+    double? latitude,
+    double? longitude,
+  ) async {
+    if (!mounted || user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("User not authenticated")));
+      return;
+    }
+
+    if (latitude == null || longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Invalid emergency location")),
+      );
+      return;
+    }
+
+    try {
+      final database = FirebaseDatabase.instance;
+
+      final initialData = {
+        'latitude': _currentPosition?.latitude ?? latitude,
+        'longitude': _currentPosition?.longitude ?? longitude,
+        'timestamp': DateTime.now().toIso8601String(),
+        'eta': _calculateETA(
+          _currentPosition?.latitude ?? latitude,
+          _currentPosition?.longitude ?? longitude,
+          latitude,
+          longitude,
+        ),
+        'status': 'en_route',
+      };
+
+      await database
+          .ref()
+          .child('reports/$reportId')
+          .update({
+            'status': 'accepted',
+            'assignedRescuer': {user!.uid: initialData},
+          })
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception("Request timed out"),
+          );
+
+      await database
+          .ref()
+          .child('activeRescuers/${user!.uid}')
+          .set(initialData)
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => throw Exception("Request timed out"),
+          );
+
+      if (!mounted) return;
+
+      _startLocationUpdates(reportId, latitude, longitude);
+
+      debugPrint(
+        "Navigating to tracking in _acceptEmergency for report: $reportId",
+      );
+      widget.onReportSelected({
+        'reportId': reportId,
+        'latitude': latitude,
+        'longitude': longitude,
+      });
+
+      await _fetchEmergencyReports();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Emergency accepted successfully")),
+      );
+    } catch (e, stackTrace) {
+      if (mounted) {
+        final errorMsg =
+            e.toString().contains("timeout")
+                ? "No internet connection or server timeout"
+                : "Error accepting report: $e";
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(errorMsg)));
+      }
+      debugPrint("Error accepting report: $e\nStackTrace: $stackTrace");
+    }
+  }
+
+  void _continueToTracking() {
+    if (activeEmergency == null) {
+      debugPrint("No active emergency to continue");
+      return;
+    }
+
+    debugPrint(
+      "Navigating to tracking in _continueToTracking for report: ${activeEmergency!['id']}",
+    );
+    widget.onReportSelected({
+      'reportId': activeEmergency!['id'],
+      'latitude': activeEmergency!['latitude'],
+      'longitude': activeEmergency!['longitude'],
+    });
   }
 
   String _determineSeverity(String? type) {
@@ -399,88 +526,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> _acceptEmergency(
-    String reportId,
-    double? latitude,
-    double? longitude,
-  ) async {
-    if (user == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("User not authenticated")));
-      return;
-    }
-
-    if (latitude == null || longitude == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Invalid emergency location")),
-      );
-      return;
-    }
-
-    try {
-      final database = FirebaseDatabase.instance.ref();
-
-      // Initial rescuer location update
-      final initialData = {
-        'latitude': _currentPosition?.latitude ?? (latitude + 0.01),
-        'longitude': _currentPosition?.longitude ?? (longitude + 0.01),
-        'timestamp': DateTime.now().toIso8601String(),
-        'eta': _calculateETA(
-          _currentPosition?.latitude ?? (latitude + 0.01),
-          _currentPosition?.longitude ?? (longitude + 0.01),
-          latitude,
-          longitude,
-        ),
-      };
-
-      // Update Realtime Database
-      await database.child('reports/$reportId').update({
-        'status': 'accepted',
-        'assignedRescuer': {user!.uid: initialData},
-      });
-
-      // Update activeRescuers
-      await database.child('activeRescuers/${user!.uid}').set({
-        ...initialData,
-        'status': 'en_route',
-      });
-
-      // Start live location updates
-      _startLocationUpdates(reportId, latitude, longitude);
-
-      // Navigate to LiveTrackingScreen
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (context) => LiveTrackingScreen(
-                  reportId: reportId,
-                  emergencyLat: latitude,
-                  emergencyLon: longitude,
-                ),
-          ),
-        );
-      }
-
-      // Refresh reports
-      _fetchEmergencyReports();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Emergency accepted successfully")),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error accepting report: $e")));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -510,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               child: Column(
                 children: [
-                  // Premium Header Section
+                  // Header Section
                   Container(
                     margin: EdgeInsets.all(padding),
                     padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
@@ -527,88 +572,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         ),
                       ],
                     ),
-                    child: Column(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Status Header
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Emergency Response",
-                                    style: GoogleFonts.inter(
-                                      fontSize: isSmallScreen ? 14 : 16,
-                                      color: const Color(0xFF64748B),
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      AnimatedBuilder(
-                                        animation: _pulseAnimation,
-                                        builder: (context, child) {
-                                          return Transform.scale(
-                                            scale:
-                                                isOnline
-                                                    ? _pulseAnimation.value
-                                                    : 1.0,
-                                            child: Container(
-                                              width: isSmallScreen ? 10 : 12,
-                                              height: isSmallScreen ? 10 : 12,
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    isOnline
-                                                        ? const Color(
-                                                          0xFF10B981,
-                                                        )
-                                                        : const Color(
-                                                          0xFFEF4444,
-                                                        ),
-                                                shape: BoxShape.circle,
-                                                boxShadow:
-                                                    isOnline
-                                                        ? [
-                                                          BoxShadow(
-                                                            color: const Color(
-                                                              0xFF10B981,
-                                                            ).withOpacity(0.4),
-                                                            blurRadius: 8,
-                                                            spreadRadius: 2,
-                                                          ),
-                                                        ]
-                                                        : [],
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Flexible(
-                                        child: Text(
-                                          isOnline
-                                              ? "ONLINE & READY"
-                                              : "OFFLINE",
-                                          style: GoogleFonts.inter(
-                                            fontSize: isSmallScreen ? 14 : 18,
-                                            fontWeight: FontWeight.w700,
-                                            color:
-                                                isOnline
-                                                    ? const Color(0xFF10B981)
-                                                    : const Color(0xFFEF4444),
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Emergency Response",
+                                style: GoogleFonts.inter(
+                                  fontSize: isSmallScreen ? 14 : 16,
+                                  color: const Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 4),
+                              Text(
+                                "Active Reports",
+                                style: GoogleFonts.inter(
+                                  fontSize: isSmallScreen ? 14 : 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A1D29),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          children: [
                             // Profile Avatar
                             Container(
                               padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
@@ -638,130 +631,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 size: isSmallScreen ? 16 : 20,
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            // Refresh Button
+                            Container(
+                              padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.refresh,
+                                  size: isSmallScreen ? 16 : 20,
+                                  color: const Color(0xFF64748B),
+                                ),
+                                onPressed: _fetchEmergencyReports,
+                              ),
+                            ),
                           ],
-                        ),
-                        SizedBox(height: isSmallScreen ? 16 : 24),
-
-                        // Toggle Button
-                        GestureDetector(
-                          onTap: toggleOnline,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isSmallScreen ? 20 : 24,
-                              vertical: isSmallScreen ? 12 : 16,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors:
-                                    isOnline
-                                        ? [
-                                          const Color(0xFF10B981),
-                                          const Color(0xFF059669),
-                                        ]
-                                        : [
-                                          const Color(0xFFEF4444),
-                                          const Color(0xFFDC2626),
-                                        ],
-                              ),
-                              borderRadius: BorderRadius.circular(
-                                isSmallScreen ? 16 : 20,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (isOnline
-                                          ? const Color(0xFF10B981)
-                                          : const Color(0xFFEF4444))
-                                      .withOpacity(0.4),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: Icon(
-                                    isOnline
-                                        ? FontAwesomeIcons.powerOff
-                                        : FontAwesomeIcons.play,
-                                    key: ValueKey(isOnline),
-                                    color: Colors.white,
-                                    size: isSmallScreen ? 14 : 18,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  isOnline ? "Go Offline" : "Go Online",
-                                  style: GoogleFonts.inter(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: isSmallScreen ? 14 : 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
                       ],
                     ),
                   ),
-
-                  // Statistics Cards Row
-                  Container(
-                    margin: EdgeInsets.symmetric(horizontal: padding),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final cardSpacing = isSmallScreen ? 8.0 : 12.0;
-                        final availableWidth =
-                            constraints.maxWidth - (cardSpacing * 2);
-                        final cardWidth = availableWidth / 3;
-
-                        return IntrinsicHeight(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: _buildStatCard(
-                                  "Shift Time",
-                                  "3h 24m",
-                                  FontAwesomeIcons.clock,
-                                  const Color(0xFF4F46E5),
-                                  isSmallScreen,
-                                ),
-                              ),
-                              SizedBox(width: cardSpacing),
-                              Expanded(
-                                child: _buildStatCard(
-                                  "Location",
-                                  _currentPosition != null
-                                      ? "Lat: ${_currentPosition!.latitude.toStringAsFixed(2)}"
-                                      : "Accra, GH",
-                                  FontAwesomeIcons.locationDot,
-                                  const Color(0xFF10B981),
-                                  isSmallScreen,
-                                ),
-                              ),
-                              SizedBox(width: cardSpacing),
-                              Expanded(
-                                child: _buildStatCard(
-                                  "Calls Today",
-                                  "7",
-                                  FontAwesomeIcons.phone,
-                                  const Color(0xFFF59E0B),
-                                  isSmallScreen,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-
-                  SizedBox(height: isSmallScreen ? 20 : 32),
 
                   // Emergency Alerts Section
                   Container(
@@ -833,7 +724,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      "Emergency Alerts",
+                                      activeEmergency != null
+                                          ? "Active Emergency"
+                                          : "Emergency Alerts",
                                       style: GoogleFonts.inter(
                                         fontSize: isSmallScreen ? 16 : 20,
                                         fontWeight: FontWeight.w700,
@@ -841,7 +734,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       ),
                                     ),
                                     Text(
-                                      "Real-time emergency responses",
+                                      activeEmergency != null
+                                          ? "You are responding to an emergency"
+                                          : "Real-time emergency responses",
                                       style: GoogleFonts.inter(
                                         fontSize: isSmallScreen ? 12 : 14,
                                         color: const Color(0xFF64748B),
@@ -850,81 +745,78 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   ],
                                 ),
                               ),
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: isSmallScreen ? 8 : 12,
-                                  vertical: isSmallScreen ? 4 : 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFFEF4444,
-                                  ).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  "${emergencyReports.length} Active",
-                                  style: GoogleFonts.inter(
-                                    fontSize: isSmallScreen ? 10 : 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFFEF4444),
+                              if (activeEmergency == null)
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isSmallScreen ? 8 : 12,
+                                    vertical: isSmallScreen ? 4 : 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFFEF4444,
+                                    ).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    "${emergencyReports.length} Active",
+                                    style: GoogleFonts.inter(
+                                      fontSize: isSmallScreen ? 10 : 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFFEF4444),
+                                    ),
                                   ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
 
-                        // Emergency Cards List
-                        if (isOnline)
-                          isLoading
-                              ? const Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(),
-                              )
-                              : errorMessage != null
-                              ? Padding(
-                                padding: EdgeInsets.all(
-                                  isSmallScreen ? 16 : 24,
-                                ),
-                                child: Text(
-                                  errorMessage!,
-                                  style: GoogleFonts.inter(
-                                    fontSize: isSmallScreen ? 12 : 14,
-                                    color: const Color(0xFFEF4444),
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
-                              : emergencyReports.isEmpty
-                              ? Padding(
-                                padding: EdgeInsets.all(
-                                  isSmallScreen ? 16 : 24,
-                                ),
-                                child: Text(
-                                  "No active emergency reports",
-                                  style: GoogleFonts.inter(
-                                    fontSize: isSmallScreen ? 12 : 14,
-                                    color: const Color(0xFF64748B),
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
-                              : ListView.builder(
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: isSmallScreen ? 16 : 24,
-                                ),
-                                itemCount: emergencyReports.length,
-                                itemBuilder:
-                                    (context, index) =>
-                                        _buildPremiumEmergencyCard(
-                                          index,
-                                          isSmallScreen,
-                                        ),
-                              )
+                        // Content based on state
+                        if (isLoading)
+                          const Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator(),
+                          )
+                        else if (errorMessage != null)
+                          Padding(
+                            padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+                            child: Text(
+                              errorMessage!,
+                              style: GoogleFonts.inter(
+                                fontSize: isSmallScreen ? 12 : 14,
+                                color: const Color(0xFFEF4444),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        else if (activeEmergency != null)
+                          _buildActiveEmergencyCard(
+                            activeEmergency!,
+                            isSmallScreen,
+                          )
+                        else if (emergencyReports.isEmpty)
+                          Padding(
+                            padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+                            child: Text(
+                              "No active emergency reports",
+                              style: GoogleFonts.inter(
+                                fontSize: isSmallScreen ? 12 : 14,
+                                color: const Color(0xFF64748B),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
                         else
-                          _buildOfflineState(isSmallScreen),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isSmallScreen ? 16 : 24,
+                            ),
+                            itemCount: emergencyReports.length,
+                            itemBuilder:
+                                (context, index) =>
+                                    _buildEmergencyCard(index, isSmallScreen),
+                          ),
                       ],
                     ),
                   ),
@@ -937,66 +829,171 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _fetchEmergencyReports,
+        backgroundColor: const Color(0xFF4F46E5),
+        child: const Icon(Icons.refresh, color: Colors.white),
+      ),
     );
   }
 
-  Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
+  Widget _buildActiveEmergencyCard(
+    Map<String, dynamic> emergency,
     bool isSmallScreen,
   ) {
     return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+      margin: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 16 : 24,
+        vertical: isSmallScreen ? 12 : 16,
+      ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white,
+            (emergency['color'] as Color).withOpacity(0.02),
+          ],
+        ),
         borderRadius: BorderRadius.circular(isSmallScreen ? 16 : 20),
+        border: Border.all(
+          color: (emergency['color'] as Color).withOpacity(0.1),
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: (emergency['color'] as Color).withOpacity(0.1),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isSmallScreen ? 6 : 8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(isSmallScreen ? 8 : 10),
+      child: Padding(
+        padding: EdgeInsets.all(isSmallScreen ? 16 : 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 6 : 8,
+                    vertical: isSmallScreen ? 3 : 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: emergency['color'] as Color,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    emergency['severity'] as String,
+                    style: GoogleFonts.inter(
+                      fontSize: isSmallScreen ? 8 : 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  emergency['time'] as String,
+                  style: GoogleFonts.inter(
+                    fontSize: isSmallScreen ? 10 : 12,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
             ),
-            child: Icon(icon, color: color, size: isSmallScreen ? 14 : 18),
-          ),
-          SizedBox(height: isSmallScreen ? 8 : 12),
-          Text(
-            value,
-            style: GoogleFonts.inter(
-              fontSize: isSmallScreen ? 14 : 18,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A1D29),
+            SizedBox(height: isSmallScreen ? 8 : 12),
+            Text(
+              emergency['type'] as String,
+              style: GoogleFonts.inter(
+                fontSize: isSmallScreen ? 16 : 18,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF1A1D29),
+              ),
             ),
-          ),
-          Text(
-            title,
-            style: GoogleFonts.inter(
-              fontSize: isSmallScreen ? 10 : 12,
-              color: const Color(0xFF64748B),
-              fontWeight: FontWeight.w500,
+            SizedBox(height: isSmallScreen ? 6 : 8),
+            Row(
+              children: [
+                Icon(
+                  FontAwesomeIcons.locationDot,
+                  size: isSmallScreen ? 12 : 14,
+                  color: emergency['color'] as Color,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    emergency['location'] as String,
+                    style: GoogleFonts.inter(
+                      fontSize: isSmallScreen ? 12 : 14,
+                      color: const Color(0xFF64748B),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isSmallScreen ? 6 : 8,
+                    vertical: isSmallScreen ? 3 : 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (emergency['color'] as Color).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    emergency['distance'] as String,
+                    style: GoogleFonts.inter(
+                      fontSize: isSmallScreen ? 10 : 12,
+                      fontWeight: FontWeight.w600,
+                      color: emergency['color'] as Color,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+            SizedBox(height: isSmallScreen ? 12 : 16),
+            Container(
+              height: isSmallScreen ? 40 : 44,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    emergency['color'] as Color,
+                    (emergency['color'] as Color).withOpacity(0.8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ElevatedButton.icon(
+                icon: Icon(
+                  FontAwesomeIcons.mapLocationDot,
+                  size: isSmallScreen ? 14 : 16,
+                ),
+                label: Text(
+                  "Continue to Tracking",
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    fontSize: isSmallScreen ? 12 : 14,
+                  ),
+                ),
+                onPressed: _continueToTracking,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildPremiumEmergencyCard(int index, bool isSmallScreen) {
+  Widget _buildEmergencyCard(int index, bool isSmallScreen) {
     final emergency = emergencyReports[index];
 
     return Container(
@@ -1165,55 +1162,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       size: isSmallScreen ? 14 : 16,
                     ),
                     color: const Color(0xFF64748B),
-                    onPressed: () {},
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder:
+                            (context) => AlertDialog(
+                              title: Text(emergency['type']),
+                              content: Text(
+                                "Details: ${emergency['location']}",
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text("Close"),
+                                ),
+                              ],
+                            ),
+                      );
+                    },
                   ),
                 ),
               ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildOfflineState(bool isSmallScreen) {
-    return Container(
-      padding: EdgeInsets.all(isSmallScreen ? 24 : 40),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(isSmallScreen ? 20 : 24),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(isSmallScreen ? 20 : 24),
-            ),
-            child: Icon(
-              FontAwesomeIcons.powerOff,
-              size: isSmallScreen ? 32 : 48,
-              color: const Color(0xFF64748B),
-            ),
-          ),
-          SizedBox(height: isSmallScreen ? 16 : 24),
-          Text(
-            "You're Currently Offline",
-            style: GoogleFonts.inter(
-              fontSize: isSmallScreen ? 16 : 20,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF1A1D29),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: isSmallScreen ? 6 : 8),
-          Text(
-            "Go online to start receiving emergency calls",
-            style: GoogleFonts.inter(
-              fontSize: isSmallScreen ? 12 : 14,
-              color: const Color(0xFF64748B),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
       ),
     );
   }

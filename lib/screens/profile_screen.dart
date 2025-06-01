@@ -1,8 +1,10 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({Key? key});
 
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
@@ -10,17 +12,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen>
     with TickerProviderStateMixin {
-  final String _name = "Paramedic Alex Mensah";
-  final String _role = "Senior Paramedic";
-  final String _shift = "08:00 AM - 04:00 PM";
-  final String _employeeId = "EMS-2024-001";
-  final String _department = "Emergency Medical Services";
-  final String _station = "Central Ambulance Station";
-  final String _certification = "Advanced Life Support (ALS)";
-  final String _experience = "8 Years";
-  final String _phoneNumber = "+233 20 123 4567";
-  final String _email = "alex.mensah@ems.gov.gh";
-
   late AnimationController _fadeController;
   late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
@@ -30,75 +21,28 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _notificationsEnabled = true;
   bool _locationSharing = true;
 
-  // Statistics data
-  final Map<String, dynamic> _stats = {
-    'totalCalls': 1247,
-    'successfulRescues': 1198,
-    'averageResponseTime': '4.2 min',
-    'rating': 4.9,
-    'monthlyHours': 178,
-    'overtimeHours': 24,
-  };
-
-  // Recent activities
-  final List<Map<String, dynamic>> _recentActivities = [
-    {
-      'title': 'Emergency Response',
-      'description': 'Cardiac arrest - Independence Avenue',
-      'time': '2 hours ago',
-      'status': 'Completed',
-      'icon': Icons.favorite,
-      'color': Colors.red,
-    },
-    {
-      'title': 'Training Session',
-      'description': 'CPR Certification Renewal',
-      'time': '1 day ago',
-      'status': 'Completed',
-      'icon': Icons.school,
-      'color': Colors.blue,
-    },
-    {
-      'title': 'Equipment Check',
-      'description': 'Ambulance Unit AM-001',
-      'time': '2 days ago',
-      'status': 'Completed',
-      'icon': Icons.build,
-      'color': Colors.green,
-    },
-  ];
-
-  // Certifications
-  final List<Map<String, dynamic>> _certifications = [
-    {
-      'name': 'Advanced Life Support (ALS)',
-      'issuer': 'Ghana Health Service',
-      'expiry': 'Dec 2025',
-      'status': 'Active',
-    },
-    {
-      'name': 'Emergency Medical Technician',
-      'issuer': 'National Registry',
-      'expiry': 'Mar 2026',
-      'status': 'Active',
-    },
-    {
-      'name': 'Hazmat Operations',
-      'issuer': 'Fire & Safety Institute',
-      'expiry': 'Jun 2025',
-      'status': 'Active',
-    },
-  ];
-
+  final _firestore = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+  final _formKey = GlobalKey<FormState>();
   @override
   void initState() {
     super.initState();
+
+    // Check authentication
+    if (_auth.currentUser == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacementNamed(context, '/login');
+        debugPrint("No user logged in, redirecting to login");
+      });
+    }
+
+    // Initialize animations
     _fadeController = AnimationController(
-      duration: Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     );
     _slideController = AnimationController(
-      duration: Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     );
 
@@ -107,7 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
 
     _slideAnimation = Tween<Offset>(
-      begin: Offset(0, 0.3),
+      begin: const Offset(0, 0.3),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _slideController, curve: Curves.easeOut));
 
@@ -122,16 +66,184 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.dispose();
   }
 
-  Widget _buildProfileHeader() {
+  // Map Firestore icon strings to Icons
+  IconData _getIconFromString(String iconName) {
+    switch (iconName) {
+      case 'favorite':
+        return Icons.favorite;
+      case 'school':
+        return Icons.school;
+      case 'build':
+        return Icons.build;
+      default:
+        return Icons.info;
+    }
+  }
+
+  // Convert hex string to Color
+  Color _hexToColor(String hex) {
+    try {
+      final hexColor = hex.replaceAll('#', '');
+      return Color(int.parse('FF$hexColor', radix: 16));
+    } catch (e) {
+      debugPrint("Invalid hex color: $hex");
+      return Colors.grey;
+    }
+  }
+
+  // Show edit profile dialog
+  Future<void> _showEditProfileDialog(Map<String, dynamic> userData) async {
+    final nameController = TextEditingController(text: userData['name']);
+    final phoneController = TextEditingController(text: userData['phone']);
+    final emailController = TextEditingController(text: userData['email']);
+
+    await showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(
+              "Edit Profile",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+            content: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(labelText: "Name"),
+                      validator:
+                          (value) => value!.isEmpty ? "Name is required" : null,
+                    ),
+                    TextFormField(
+                      controller: phoneController,
+                      decoration: const InputDecoration(labelText: "Phone"),
+                      keyboardType: TextInputType.phone,
+                      validator:
+                          (value) =>
+                              value!.isEmpty ? "Phone is required" : null,
+                    ),
+                    TextFormField(
+                      controller: emailController,
+                      decoration: const InputDecoration(labelText: "Email"),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        if (value!.isEmpty) return "Email is required";
+                        if (!RegExp(
+                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                        ).hasMatch(value)) {
+                          return "Enter a valid email";
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_formKey.currentState!.validate()) {
+                    try {
+                      await _firestore
+                          .collection('users')
+                          .doc(_auth.currentUser!.uid)
+                          .update({
+                            'name': nameController.text.trim(),
+                            'phone': phoneController.text.trim(),
+                            'email': emailController.text.trim(),
+                          });
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Profile updated")),
+                        );
+                        Navigator.pop(context);
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Error updating profile: $e")),
+                        );
+                      }
+                      debugPrint("Error updating profile: $e");
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text("Save"),
+              ),
+            ],
+          ),
+    );
+
+    nameController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+  }
+
+  // Handle action tiles
+  Future<void> _handleAction(String title) async {
+    switch (title) {
+      case 'Edit Profile':
+        final userDoc =
+            await _firestore
+                .collection('users')
+                .doc(_auth.currentUser!.uid)
+                .get();
+        if (userDoc.exists && mounted) {
+          _showEditProfileDialog(userDoc.data()!);
+        }
+        break;
+      case 'Logout':
+        try {
+          await _auth.signOut();
+          if (mounted) {
+            Navigator.pushReplacementNamed(context, '/login');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Logged out successfully")),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text("Error logging out: $e")));
+          }
+          debugPrint("Error logging out: $e");
+        }
+        break;
+      default:
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("$title - Feature coming soon!")),
+          );
+        }
+    }
+  }
+
+  Widget _buildProfileHeader(
+    Map<String, dynamic>? userData,
+    Map<String, dynamic>? stats,
+  ) {
     return Container(
-      padding: EdgeInsets.all(24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [Colors.redAccent, Colors.red[700]!, Colors.red[800]!],
         ),
-        borderRadius: BorderRadius.only(
+        borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(30),
           bottomRight: Radius.circular(30),
         ),
@@ -140,7 +252,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             color: Colors.red.withOpacity(0.3),
             blurRadius: 20,
             spreadRadius: 5,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -151,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               Stack(
                 children: [
                   Container(
-                    padding: EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
@@ -166,9 +278,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                     child: CircleAvatar(
                       radius: 45,
                       backgroundColor: Colors.grey[100],
-                      backgroundImage: AssetImage(
-                        'assets/profile_placeholder.jpg',
-                      ), // You can replace with actual image
                       child: Icon(
                         Icons.person,
                         size: 50,
@@ -180,7 +289,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     bottom: 0,
                     right: 0,
                     child: Container(
-                      padding: EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: _isOnDuty ? Colors.green : Colors.orange,
                         shape: BoxShape.circle,
@@ -195,38 +304,31 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ],
               ),
-              SizedBox(width: 20),
+              const SizedBox(width: 20),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _name,
+                      userData?['fullName'] ?? 'Loading...',
                       style: GoogleFonts.poppins(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      _role,
+                      userData?['role'] ?? '',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      "ID: $_employeeId",
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
-                    SizedBox(height: 8),
+
+                    const SizedBox(height: 8),
                     Container(
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 6,
                       ),
@@ -248,34 +350,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ],
           ),
-          SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  "Response Rate",
-                  "${_stats['successfulRescues']}/${_stats['totalCalls']}",
-                  Icons.trending_up,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  "Avg Response",
-                  "${_stats['averageResponseTime']}",
-                  Icons.timer,
-                ),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  "Rating",
-                  "${_stats['rating']}/5.0",
-                  Icons.star,
-                ),
-              ),
-            ],
-          ),
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -283,7 +358,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildStatCard(String title, String value, IconData icon) {
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.2),
         borderRadius: BorderRadius.circular(12),
@@ -292,7 +367,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Column(
         children: [
           Icon(icon, color: Colors.white, size: 20),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
             value,
             style: GoogleFonts.poppins(
@@ -314,10 +389,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildInfoSection() {
+  Widget _buildInfoSection(Map<String, dynamic>? userData) {
     return Container(
-      margin: EdgeInsets.all(16),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -340,14 +415,17 @@ class _ProfileScreenState extends State<ProfileScreen>
               color: Colors.grey[800],
             ),
           ),
-          SizedBox(height: 16),
-          _buildInfoRow(Icons.business, "Department", _department),
-          _buildInfoRow(Icons.location_on, "Station", _station),
-          _buildInfoRow(Icons.access_time, "Shift Hours", _shift),
-          _buildInfoRow(Icons.verified, "Certification", _certification),
-          _buildInfoRow(Icons.work, "Experience", _experience),
-          _buildInfoRow(Icons.phone, "Phone", _phoneNumber),
-          _buildInfoRow(Icons.email, "Email", _email),
+          const SizedBox(height: 16),
+          _buildInfoRow(
+            Icons.phone,
+            "Phone",
+            userData?['phone'] ?? 'Loading...',
+          ),
+          _buildInfoRow(
+            Icons.email,
+            "Email",
+            userData?['email'] ?? 'Loading...',
+          ),
         ],
       ),
     );
@@ -355,18 +433,18 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.redAccent.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(icon, color: Colors.redAccent, size: 20),
           ),
-          SizedBox(width: 16),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,109 +472,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildStatsSection() {
+  Widget _buildRecentActivity(List<Map<String, dynamic>> activities) {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Performance Statistics",
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[800],
-            ),
-          ),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatItem(
-                  "Total Calls",
-                  "${_stats['totalCalls']}",
-                  Colors.blue,
-                ),
-              ),
-              Expanded(
-                child: _buildStatItem(
-                  "Monthly Hours",
-                  "${_stats['monthlyHours']}",
-                  Colors.green,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatItem(
-                  "Success Rate",
-                  "${((_stats['successfulRescues'] / _stats['totalCalls']) * 100).toStringAsFixed(1)}%",
-                  Colors.orange,
-                ),
-              ),
-              Expanded(
-                child: _buildStatItem(
-                  "Overtime",
-                  "${_stats['overtimeHours']}h",
-                  Colors.purple,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, Color color) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4),
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentActivity() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -523,7 +502,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("View All - Coming soon!")),
+                  );
+                },
                 child: Text(
                   "View All",
                   style: GoogleFonts.poppins(
@@ -535,10 +518,16 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ],
           ),
-          SizedBox(height: 12),
-          ..._recentActivities
-              .map((activity) => _buildActivityItem(activity))
-              .toList(),
+          const SizedBox(height: 12),
+          if (activities.isEmpty)
+            Text(
+              "No recent activities",
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            )
+          else
+            ...activities
+                .map((activity) => _buildActivityItem(activity))
+                .toList(),
         ],
       ),
     );
@@ -546,8 +535,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildActivityItem(Map<String, dynamic> activity) {
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 6),
-      padding: EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
@@ -556,14 +545,18 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: activity['color'].withOpacity(0.1),
+              color: _hexToColor(activity['color']).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(activity['icon'], color: activity['color'], size: 20),
+            child: Icon(
+              _getIconFromString(activity['icon']),
+              color: _hexToColor(activity['color']),
+              size: 20,
+            ),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,7 +587,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
           ),
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.green.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
@@ -613,107 +606,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  Widget _buildCertifications() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Certifications",
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[800],
-            ),
-          ),
-          SizedBox(height: 16),
-          ..._certifications
-              .map((cert) => _buildCertificationItem(cert))
-              .toList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCertificationItem(Map<String, dynamic> cert) {
-    return Container(
-      margin: EdgeInsets.symmetric(vertical: 6),
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue[200]!),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.verified, color: Colors.blue[600], size: 24),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  cert['name'],
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                Text(
-                  "Issued by: ${cert['issuer']}",
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  "Expires: ${cert['expiry']}",
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              cert['status'],
-              style: GoogleFonts.poppins(
-                fontSize: 10,
-                color: Colors.green[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSettingsSection() {
     return Container(
-      margin: EdgeInsets.all(16),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -736,7 +632,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               color: Colors.grey[800],
             ),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           _buildSettingsTile(
             Icons.notifications,
             "Notifications",
@@ -751,7 +647,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             _locationSharing,
             (value) => setState(() => _locationSharing = value),
           ),
-          Divider(height: 30),
+          const Divider(height: 30),
           _buildActionTile(Icons.edit, "Edit Profile", Colors.blue),
           _buildActionTile(Icons.history, "Activity History", Colors.green),
           _buildActionTile(Icons.school, "Training Records", Colors.orange),
@@ -773,7 +669,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Container(
-        padding: EdgeInsets.all(8),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: Colors.blue.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
@@ -800,7 +696,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Container(
-        padding: EdgeInsets.all(8),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
@@ -816,40 +712,97 @@ class _ProfileScreenState extends State<ProfileScreen>
         size: 16,
         color: Colors.grey[400],
       ),
-      onTap: () {
-        // Handle navigation
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("$title - Feature coming soon!"),
-            backgroundColor: color,
-          ),
-        );
-      },
+      onTap: () => _handleAction(title),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: SingleChildScrollView(
-            child: Column(
-              children: [
-                _buildProfileHeader(),
-                SizedBox(height: 8),
-                _buildInfoSection(),
-                _buildStatsSection(),
-                _buildRecentActivity(),
-                _buildCertifications(),
-                _buildSettingsSection(),
-                SizedBox(height: 20),
-              ],
-            ),
-          ),
-        ),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream:
+            _auth.currentUser != null
+                ? _firestore
+                    .collection('users')
+                    .doc(_auth.currentUser!.uid)
+                    .snapshots()
+                : null,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            debugPrint("Error fetching user data: ${snapshot.error}");
+            return Center(
+              child: Text(
+                "Error loading profile",
+                style: GoogleFonts.poppins(color: Colors.red),
+              ),
+            );
+          }
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return Center(
+              child: Text(
+                "No profile data found",
+                style: GoogleFonts.poppins(color: Colors.grey),
+              ),
+            );
+          }
+
+          final userData = snapshot.data!.data() as Map<String, dynamic>;
+          final stats = userData['stats'] as Map<String, dynamic>?;
+
+          return StreamBuilder<QuerySnapshot>(
+            stream:
+                _auth.currentUser != null
+                    ? _firestore
+                        .collection('users')
+                        .doc(_auth.currentUser!.uid)
+                        .collection('activities')
+                        .orderBy('time', descending: true)
+                        .limit(5)
+                        .snapshots()
+                    : null,
+            builder: (context, activitySnapshot) {
+              List<Map<String, dynamic>> activities = [];
+              if (activitySnapshot.hasData) {
+                activities =
+                    activitySnapshot.data!.docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return {
+                        'title': data['title'] ?? '',
+                        'description': data['description'] ?? '',
+                        'time':
+                            (data['time'] as Timestamp?)?.toDate().toString() ??
+                            '',
+                        'status': data['status'] ?? '',
+                        'icon': data['icon'] ?? 'info',
+                        'color': data['color'] ?? '#000000',
+                      };
+                    }).toList();
+              }
+
+              return FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildProfileHeader(userData, stats),
+                        _buildInfoSection(userData),
+
+                        _buildRecentActivity(activities),
+                        _buildSettingsSection(),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }

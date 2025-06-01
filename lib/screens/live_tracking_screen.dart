@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'package:emergency_response_safety_system_ambulance_side/utils/tracking_state.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:math';
+import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
+import 'package:provider/provider.dart';
 
 class LiveTrackingScreen extends StatefulWidget {
   final String reportId;
@@ -28,18 +31,17 @@ class LiveTrackingScreen extends StatefulWidget {
 class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     with TickerProviderStateMixin {
   late LatLng _patientLocation;
-  final _rescuerLocation = ValueNotifier<LatLng?>(null);
-  final _etaSeconds = ValueNotifier<int>(300); // Default ETA: 5 minutes
-  final _statusStep = ValueNotifier<int>(0);
-  final _routePoints = ValueNotifier<List<LatLng>>([]);
   late AnimationController _pulseController;
   late AnimationController _routeController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _routeAnimation;
-  late StreamSubscription<DatabaseEvent> _rescuerSubscription;
+  StreamSubscription<DatabaseEvent>? _rescuerSubscription;
+  StreamSubscription<Position>? _positionSubscription;
   final MapController _mapController = MapController();
   bool _isLoading = true;
   String? _errorMessage;
+  DateTime? _lastRouteFetch;
+  Position? _currentPosition;
 
   final List<Map<String, dynamic>> _statuses = [
     {
@@ -64,13 +66,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
   void initState() {
     super.initState();
     _patientLocation = LatLng(widget.emergencyLat, widget.emergencyLon);
-    _rescuerLocation.value = LatLng(
-      widget.emergencyLat + 0.01,
-      widget.emergencyLon + 0.01,
-    ); // Initial rescuer position
-    _generateRoutePoints();
 
-    // Animation controllers
+    // Pulse animation for patient marker
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -79,72 +76,188 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    // Route animation for polyline
     _routeController = AnimationController(
-      duration: const Duration(seconds: 1),
+      duration: const Duration(seconds: 2),
       vsync: this,
     );
-    _routeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _routeController, curve: Curves.easeInOut),
-    );
+    _routeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _routeController, curve: Curves.easeIn));
     _routeController.forward();
 
-    // Fetch rescuer updates from Firebase
-    _listenToRescuerUpdates();
-
-    // Center map initially
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mapController.move(_rescuerLocation.value!, 14.0);
+    // Initialize location services
+    Future.microtask(() {
+      if (!mounted) return;
+      _requestLocationPermission();
+      _listenToRescuerUpdates();
     });
+  }
+
+  @override
+  void dispose() {
+    _rescuerSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _pulseController.dispose();
+    _routeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _requestLocationPermission() async {
+    var status = await Permission.location.status;
+    if (status.isDenied) {
+      if (await Permission.location.request().isGranted) {
+        _startLocationUpdates();
+      } else {
+        if (mounted) {
+          setState(() {
+            _errorMessage = "Location permission denied";
+            _isLoading = false;
+          });
+        }
+      }
+    } else if (status.isGranted) {
+      _startLocationUpdates();
+    } else if (status.isPermanentlyDenied) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Location permission permanently denied";
+          _isLoading = false;
+        });
+      }
+      openAppSettings();
+    }
+  }
+
+  void _startLocationUpdates() {
+    _positionSubscription?.cancel();
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // Update every 10 meters
+      ),
+    ).listen(
+      (Position position) async {
+        if (!mounted) return;
+        setState(() {
+          _currentPosition = position;
+        });
+
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) return;
+
+        final trackingState = Provider.of<TrackingState>(
+          context,
+          listen: false,
+        );
+        final rescuerLoc = LatLng(position.latitude, position.longitude);
+        trackingState.updateRescuerLocation(widget.reportId, rescuerLoc);
+
+        final database = FirebaseDatabase.instance.ref();
+        final updateData = {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'timestamp': DateTime.now().toIso8601String(),
+          'eta': _calculateETA(position.latitude, position.longitude),
+          'status':
+              trackingState.getStatusStep(widget.reportId) == 0
+                  ? 'en_route'
+                  : 'arrived',
+        };
+
+        try {
+          // Update Firebase
+          await database
+              .child('reports/${widget.reportId}/assignedRescuer/${user.uid}')
+              .update(updateData);
+          await database.child('activeRescuers/${user.uid}').update(updateData);
+          _generateRoutePoints();
+          _recenterMap();
+        } catch (e) {
+          debugPrint("Error updating location: $e");
+        }
+      },
+      onError: (e) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = "Error fetching location: $e";
+            _isLoading = false;
+          });
+        }
+      },
+    );
   }
 
   void _listenToRescuerUpdates() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = "User not authenticated";
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "User not authenticated";
+        });
+      }
       return;
     }
 
     final database = FirebaseDatabase.instance.ref();
+    final path = 'reports/${widget.reportId}/assignedRescuer/${user.uid}';
     _rescuerSubscription = database
-        .child('reports/${widget.reportId}/assignedRescuer/${user.uid}')
+        .child(path)
         .onValue
         .listen(
-          (event) async {
+          (event) {
             final data = event.snapshot.value as Map<dynamic, dynamic>?;
-            if (data != null && mounted) {
+            if (!mounted) return;
+
+            final trackingState = Provider.of<TrackingState>(
+              context,
+              listen: false,
+            );
+            if (data != null) {
               final double? latitude = data['latitude']?.toDouble();
               final double? longitude = data['longitude']?.toDouble();
               final int? eta = data['eta']?.toInt();
+              final String? status = data['status']?.toString();
 
               if (latitude != null && longitude != null) {
-                _rescuerLocation.value = LatLng(latitude, longitude);
-                _etaSeconds.value = eta ?? _etaSeconds.value;
-                _generateRoutePoints();
+                trackingState.updateRescuerLocation(
+                  widget.reportId,
+                  LatLng(latitude, longitude),
+                );
+                trackingState.updateEta(
+                  widget.reportId,
+                  eta ?? _calculateETA(latitude, longitude),
+                );
 
-                // Update status based on distance
-                double distance = Geolocator.distanceBetween(
+                // Update status based on distance and Firebase data
+                final distance = Geolocator.distanceBetween(
                   latitude,
                   longitude,
                   _patientLocation.latitude,
                   _patientLocation.longitude,
                 );
-                if (distance < 100 && _statusStep.value < 1) {
-                  _statusStep.value = 1; // At Scene
-                } else if (_statusStep.value == 1 && distance > 100) {
-                  _statusStep.value = 2; // Transporting Patient
-                } else if (_statusStep.value == 2 && distance > 1000) {
-                  _statusStep.value = 3; // Arrived at Hospital
+                int newStatusStep = trackingState.getStatusStep(
+                  widget.reportId,
+                );
+                if (distance < 100 && newStatusStep < 1) {
+                  newStatusStep = 1; // At Scene
+                } else if (newStatusStep == 1 && distance > 100) {
+                  newStatusStep = 2; // Transporting Patient
+                } else if (newStatusStep == 2 && distance > 1000) {
+                  newStatusStep = 3; // Arrived at Hospital
+                } else if (status == 'arrived' && newStatusStep < 1) {
+                  newStatusStep = 1;
                 }
+                trackingState.updateStatus(widget.reportId, newStatusStep);
 
-                // Update loading state only on first valid data
-                if (_isLoading) {
-                  setState(() {
-                    _isLoading = false;
-                  });
-                }
+                setState(() {
+                  _isLoading = false;
+                  _errorMessage = null;
+                });
+                _generateRoutePoints();
+                _recenterMap();
               } else {
                 setState(() {
                   _isLoading = false;
@@ -154,50 +267,149 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
             } else {
               setState(() {
                 _isLoading = false;
-                _errorMessage = "No rescuer data found";
+                _errorMessage = "No rescuer data found at $path";
               });
             }
           },
-          onError: (error) {
+          onError: (error, stackTrace) {
             if (mounted) {
               setState(() {
                 _isLoading = false;
                 _errorMessage = "Error fetching rescuer data: $error";
               });
+              debugPrint("Firebase error: $error\nStackTrace: $stackTrace");
             }
           },
         );
   }
 
-  void _generateRoutePoints() {
-    final rescuerLoc = _rescuerLocation.value;
-    if (rescuerLoc == null) return;
-
-    final double latDiff = _patientLocation.latitude - rescuerLoc.latitude;
-    final double lngDiff = _patientLocation.longitude - rescuerLoc.longitude;
-    final List<LatLng> newRoutePoints = [];
-    for (int i = 0; i <= 20; i++) {
-      double t = i / 20.0;
-      double curveFactor = sin(t * pi) * 0.002;
-      LatLng point = LatLng(
-        rescuerLoc.latitude + (latDiff * t) + curveFactor,
-        rescuerLoc.longitude + (lngDiff * t) - curveFactor,
-      );
-      newRoutePoints.add(point);
-    }
-    _routePoints.value = newRoutePoints;
+  int _calculateETA(double rescuerLat, double rescuerLon) {
+    final distance = Geolocator.distanceBetween(
+      rescuerLat,
+      rescuerLon,
+      _patientLocation.latitude,
+      _patientLocation.longitude,
+    );
+    // Assume average speed of 40 km/h (11.11 m/s) for urban ambulance travel
+    final etaSeconds = (distance / 11.11).round();
+    return etaSeconds.clamp(60, 900); // 1–15 minutes
   }
 
-  @override
-  void dispose() {
-    _rescuerSubscription.cancel();
-    _pulseController.dispose();
-    _routeController.dispose();
-    _rescuerLocation.dispose();
-    _etaSeconds.dispose();
-    _statusStep.dispose();
-    _routePoints.dispose();
-    super.dispose();
+  void _generateRoutePoints() async {
+    if (_lastRouteFetch != null &&
+        DateTime.now().difference(_lastRouteFetch!).inSeconds < 10) {
+      return; // Throttle route requests
+    }
+    _lastRouteFetch = DateTime.now();
+
+    final trackingState = Provider.of<TrackingState>(context, listen: false);
+    final rescuerLoc =
+        _currentPosition != null
+            ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+            : trackingState.getRescuerLocation(widget.reportId);
+    if (rescuerLoc == null) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = "Rescuer location unavailable";
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
+    const String apiKey =
+        '5b3ce3597851110001cf624862ba9d9ce4314f088c7a3b8fec0f957e';
+    const String profile = 'driving-car';
+    const String orsUrl =
+        'https://api.openrouteservice.org/v2/directions/$profile/geojson';
+
+    final Map<String, dynamic> body = {
+      'coordinates': [
+        [rescuerLoc.longitude, rescuerLoc.latitude],
+        [_patientLocation.longitude, _patientLocation.latitude],
+      ],
+      'units': 'm',
+      'geometry': true,
+    };
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse(orsUrl),
+            headers: {
+              'Authorization': apiKey,
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final features = data['features'] as List<dynamic>;
+        final geometry = features[0]['geometry'] as Map<String, dynamic>;
+        final coordinates = geometry['coordinates'] as List<dynamic>;
+        final properties = features[0]['properties'] as Map<String, dynamic>;
+        final segments = properties['segments'] as List<dynamic>;
+        final duration = segments[0]['duration'] as num;
+
+        final List<LatLng> newRoutePoints =
+            coordinates
+                .map(
+                  (coord) => LatLng(coord[1].toDouble(), coord[0].toDouble()),
+                )
+                .toList();
+
+        trackingState.updateRoutePoints(widget.reportId, newRoutePoints);
+        trackingState.updateEta(widget.reportId, duration.round());
+        setState(() {
+          _isLoading = false;
+          _errorMessage = null;
+        });
+      } else {
+        // Fallback to straight line
+        trackingState.updateRoutePoints(widget.reportId, [
+          rescuerLoc,
+          _patientLocation,
+        ]);
+        trackingState.updateEta(
+          widget.reportId,
+          _calculateETA(rescuerLoc.latitude, rescuerLoc.longitude),
+        );
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Failed to fetch route, using direct path";
+        });
+      }
+    } catch (e) {
+      trackingState.updateRoutePoints(widget.reportId, [
+        rescuerLoc,
+        _patientLocation,
+      ]);
+      trackingState.updateEta(
+        widget.reportId,
+        _calculateETA(rescuerLoc.latitude, rescuerLoc.longitude),
+      );
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Error fetching route, using direct path";
+        });
+      }
+    }
+  }
+
+  void _recenterMap() {
+    final trackingState = Provider.of<TrackingState>(context, listen: false);
+    final rescuerLoc = trackingState.getRescuerLocation(widget.reportId);
+    if (rescuerLoc == null) return;
+
+    final bounds = LatLngBounds.fromPoints([_patientLocation, rescuerLoc]);
+    _mapController.fitCamera(
+      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(100)),
+    );
   }
 
   Widget _buildCustomMarker({
@@ -233,22 +445,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     );
   }
 
-  void _recenterMap() {
-    final bounds = LatLngBounds.fromPoints([
-      _patientLocation,
-      _rescuerLocation.value ?? _patientLocation,
-    ]);
-    _mapController.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final trackingState = Provider.of<TrackingState>(context);
     return Scaffold(
       body: Stack(
         children: [
-          // Map
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
@@ -263,73 +465,47 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                     "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                 subdomains: const ['a', 'b', 'c'],
               ),
-              ValueListenableBuilder<List<LatLng>>(
-                valueListenable: _routePoints,
-                builder: (context, routePoints, _) {
-                  return AnimatedBuilder(
-                    animation: _routeAnimation,
-                    builder: (context, child) {
-                      int visiblePoints =
-                          (routePoints.length * _routeAnimation.value).round();
-                      List<LatLng> visibleRoute =
-                          routePoints.take(visiblePoints).toList();
-                      return PolylineLayer(
-                        polylines: [
-                          if (visibleRoute.length > 1)
-                            Polyline(
-                              points: visibleRoute,
-                              color: Colors.redAccent.withOpacity(0.8),
-                              strokeWidth: 4.0,
-                              isDotted: true,
-                            ),
-                        ],
-                      );
-                    },
-                  );
-                },
+              PolylineLayer(
+                polylines: [
+                  if (trackingState.getRoutePoints(widget.reportId).length > 1)
+                    Polyline(
+                      points: trackingState.getRoutePoints(widget.reportId),
+                      color: Colors.blue.withOpacity(0.8),
+                      strokeWidth: 4.0,
+                    ),
+                ],
               ),
-              ValueListenableBuilder<LatLng?>(
-                valueListenable: _rescuerLocation,
-                builder: (context, rescuerLoc, _) {
-                  return MarkerLayer(
-                    markers: [
-                      // Patient marker
-                      Marker(
-                        width: 50.0,
-                        height: 50.0,
-                        point: _patientLocation,
-                        child: _buildCustomMarker(
-                          icon: Icons.person_pin_circle,
-                          color: Colors.blue,
-                          size: 50,
-                          isPulsing: true,
-                        ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 50.0,
+                    height: 50.0,
+                    point: _patientLocation,
+                    child: _buildCustomMarker(
+                      icon: Icons.person_pin_circle,
+                      color: Colors.blue,
+                      size: 50,
+                      isPulsing: true,
+                    ),
+                  ),
+                  if (trackingState.getRescuerLocation(widget.reportId) != null)
+                    Marker(
+                      width: 45.0,
+                      height: 45.0,
+                      point: trackingState.getRescuerLocation(widget.reportId)!,
+                      child: _buildCustomMarker(
+                        icon: Icons.local_hospital,
+                        color:
+                            _statuses[trackingState.getStatusStep(
+                              widget.reportId,
+                            )]["color"],
+                        size: 45,
                       ),
-                      // Rescuer marker
-                      if (rescuerLoc != null)
-                        Marker(
-                          width: 45.0,
-                          height: 45.0,
-                          point: rescuerLoc,
-                          child: ValueListenableBuilder<int>(
-                            valueListenable: _statusStep,
-                            builder: (context, statusStep, _) {
-                              return _buildCustomMarker(
-                                icon: Icons.local_hospital,
-                                color: _statuses[statusStep]["color"],
-                                size: 45,
-                              );
-                            },
-                          ),
-                        ),
-                    ],
-                  );
-                },
+                    ),
+                ],
               ),
             ],
           ),
-
-          // Gradient overlay at top
           Positioned(
             top: 0,
             left: 0,
@@ -345,8 +521,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               ),
             ),
           ),
-
-          // Custom App Bar
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 20,
@@ -393,7 +567,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                       ],
                     ),
                     child: Text(
-                      "Live Rescuer Tracking",
+                      "Live Tracking",
                       style: GoogleFonts.poppins(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -406,8 +580,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               ],
             ),
           ),
-
-          // Recenter Button
           Positioned(
             right: 20,
             bottom: 230,
@@ -418,8 +590,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               child: const Icon(Icons.my_location, color: Colors.redAccent),
             ),
           ),
-
-          // Status Card
           Positioned(
             bottom: 30,
             left: 20,
@@ -438,7 +608,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                             color: Colors.black.withOpacity(0.15),
                             blurRadius: 20,
                             spreadRadius: 5,
-                            offset: const Offset(0, 5),
                           ),
                         ],
                       ),
@@ -461,123 +630,114 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                             color: Colors.black.withOpacity(0.15),
                             blurRadius: 20,
                             spreadRadius: 5,
-                            offset: const Offset(0, 5),
                           ),
                         ],
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Status indicator
-                          ValueListenableBuilder<int>(
-                            valueListenable: _statusStep,
-                            builder: (context, statusStep, _) {
-                              return Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: _statuses[statusStep]["color"]
-                                          .withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _statuses[trackingState.getStatusStep(
+                                        widget.reportId,
+                                      )]["color"]
+                                      .withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  _statuses[trackingState.getStatusStep(
+                                    widget.reportId,
+                                  )]["icon"],
+                                  color:
+                                      _statuses[trackingState.getStatusStep(
+                                        widget.reportId,
+                                      )]["color"],
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 15),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _statuses[trackingState.getStatusStep(
+                                        widget.reportId,
+                                      )]["text"],
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[800],
+                                      ),
                                     ),
-                                    child: Icon(
-                                      _statuses[statusStep]["icon"],
-                                      color: _statuses[statusStep]["color"],
-                                      size: 24,
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Rescuer Unit #${FirebaseAuth.instance.currentUser?.uid.substring(0, 6)}",
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: Colors.grey[600],
+                                      ),
                                     ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.redAccent,
+                                      Colors.red[700]!,
+                                    ],
                                   ),
-                                  const SizedBox(width: 15),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _statuses[statusStep]["text"],
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.grey[800],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          "Rescuer Unit #${FirebaseAuth.instance.currentUser?.uid.substring(0, 6)}",
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  "ETA: ${(trackingState.getEtaSeconds(widget.reportId) ~/ 60).clamp(1, 15)} mins",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
                                   ),
-                                  ValueListenableBuilder<int>(
-                                    valueListenable: _etaSeconds,
-                                    builder: (context, eta, _) {
-                                      return Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 8,
-                                          horizontal: 16,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              Colors.redAccent,
-                                              Colors.red[700]!,
-                                            ],
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          "ETA: ${(eta ~/ 60).clamp(1, 15)} mins",
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              );
-                            },
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 15),
-                          // Progress bar
-                          ValueListenableBuilder<int>(
-                            valueListenable: _statusStep,
-                            builder: (context, statusStep, _) {
-                              return Container(
-                                height: 6,
+                          Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                            child: FractionallySizedBox(
+                              widthFactor:
+                                  (trackingState.getStatusStep(
+                                        widget.reportId,
+                                      ) +
+                                      1) /
+                                  _statuses.length,
+                              alignment: Alignment.centerLeft,
+                              child: Container(
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[200],
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.redAccent,
+                                      Colors.red[700]!,
+                                    ],
+                                  ),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
-                                child: FractionallySizedBox(
-                                  widthFactor:
-                                      (statusStep + 1) / _statuses.length,
-                                  alignment: Alignment.centerLeft,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          Colors.redAccent,
-                                          Colors.red[700]!,
-                                        ],
-                                      ),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 10),
-                          // Contact buttons (placeholders)
                           Row(
                             children: [
                               Expanded(
@@ -602,7 +762,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        "Call Rescuer",
+                                        "Call Victim",
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w500,
@@ -614,39 +774,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              Expanded(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.blue[300]!,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.message,
-                                        color: Colors.blue[700],
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "Message",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.blue[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                         ],
