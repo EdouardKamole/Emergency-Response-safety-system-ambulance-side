@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:emergency_response_safety_system_ambulance_side/utils/tracking_state.dart';
+import 'package:emergency_response_safety_system_ambulance_side/widgets/bottom_nav.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -36,12 +37,16 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
   late Animation<double> _pulseAnimation;
   late Animation<double> _routeAnimation;
   StreamSubscription<DatabaseEvent>? _rescuerSubscription;
+  StreamSubscription<DatabaseEvent>?
+  _patientSubscription; // New: For victim location
   StreamSubscription<Position>? _positionSubscription;
   final MapController _mapController = MapController();
   bool _isLoading = true;
   String? _errorMessage;
   DateTime? _lastRouteFetch;
   Position? _currentPosition;
+  bool _hasUserInteractedWithMap = false; // New: Track user interaction
+  double _lastZoom = 13.0; // New: Track zoom level
 
   final List<Map<String, dynamic>> _statuses = [
     {
@@ -87,20 +92,33 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     ).animate(CurvedAnimation(parent: _routeController, curve: Curves.easeIn));
     _routeController.forward();
 
-    // Initialize location services
+    // Listen for map interactions
+    _mapController.mapEventStream.listen((event) {
+      if (event is MapEventMove) {
+        _hasUserInteractedWithMap = true;
+      } else if (_mapController.camera.zoom != _lastZoom) {
+        _hasUserInteractedWithMap = true;
+        _lastZoom = _mapController.camera.zoom;
+      }
+    });
+
+    // Initialize location services and Firebase listeners
     Future.microtask(() {
       if (!mounted) return;
       _requestLocationPermission();
       _listenToRescuerUpdates();
+      _listenToPatientUpdates(); // New: Listen for victim location
     });
   }
 
   @override
   void dispose() {
     _rescuerSubscription?.cancel();
+    _patientSubscription?.cancel(); // New: Cancel victim subscription
     _positionSubscription?.cancel();
     _pulseController.dispose();
     _routeController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -172,10 +190,17 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               .child('reports/${widget.reportId}/assignedRescuer/${user.uid}')
               .update(updateData);
           await database.child('activeRescuers/${user.uid}').update(updateData);
-          _generateRoutePoints();
-          _recenterMap();
+          if (!_hasUserInteractedWithMap) {
+            _generateRoutePoints();
+            _recenterMap();
+          }
         } catch (e) {
           debugPrint("Error updating location: $e");
+          if (mounted) {
+            setState(() {
+              _errorMessage = "Error updating location: $e";
+            });
+          }
         }
       },
       onError: (e) {
@@ -187,6 +212,62 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
         }
       },
     );
+  }
+
+  void _listenToPatientUpdates() {
+    final database = FirebaseDatabase.instance.ref();
+    _patientSubscription = database
+        .child('reports/${widget.reportId}/location')
+        .onValue
+        .listen(
+          (event) {
+            if (!mounted) return;
+            final data = event.snapshot.value as Map<dynamic, dynamic>?;
+            if (data != null) {
+              final double? latitude = data['latitude']?.toDouble();
+              final double? longitude = data['longitude']?.toDouble();
+              if (latitude != null && longitude != null) {
+                final newPatientLocation = LatLng(latitude, longitude);
+                setState(() {
+                  _patientLocation = newPatientLocation;
+                  _isLoading = false;
+                  _errorMessage = null;
+                });
+                final trackingState = Provider.of<TrackingState>(
+                  context,
+                  listen: false,
+                );
+                trackingState.updateVictimLocation(
+                  widget.reportId,
+                  newPatientLocation,
+                );
+                if (!_hasUserInteractedWithMap) {
+                  _generateRoutePoints();
+                  _recenterMap();
+                }
+              } else {
+                setState(() {
+                  _isLoading = false;
+                  _errorMessage = "Invalid patient location data";
+                });
+              }
+            } else {
+              setState(() {
+                _isLoading = false;
+                _errorMessage = "No patient location data found";
+              });
+            }
+          },
+          onError: (error, stackTrace) {
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+                _errorMessage = "Error fetching patient location: $error";
+              });
+              debugPrint("Firebase error: $error\nStackTrace: $stackTrace");
+            }
+          },
+        );
   }
 
   void _listenToRescuerUpdates() {
@@ -256,8 +337,10 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   _isLoading = false;
                   _errorMessage = null;
                 });
-                _generateRoutePoints();
-                _recenterMap();
+                if (!_hasUserInteractedWithMap) {
+                  _generateRoutePoints();
+                  _recenterMap();
+                }
               } else {
                 setState(() {
                   _isLoading = false;
@@ -410,6 +493,8 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     _mapController.fitCamera(
       CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(100)),
     );
+    _hasUserInteractedWithMap = false; // Reset interaction flag
+    _lastZoom = _mapController.camera.zoom; // Update zoom level
   }
 
   Widget _buildCustomMarker({
@@ -528,7 +613,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
             child: Row(
               children: [
                 GestureDetector(
-                  onTap: () => Navigator.pop(context),
+                  onTap:
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BottomNavWrapper(),
+                        ),
+                      ),
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -583,11 +674,42 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
           Positioned(
             right: 20,
             bottom: 230,
-            child: FloatingActionButton(
-              onPressed: _recenterMap,
-              mini: true,
-              backgroundColor: Colors.white,
-              child: const Icon(Icons.my_location, color: Colors.redAccent),
+            child: Column(
+              children: [
+                FloatingActionButton(
+                  heroTag: "recenter",
+                  onPressed: _recenterMap,
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  child: const Icon(Icons.my_location, color: Colors.redAccent),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton(
+                  heroTag: "zoomIn",
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  onPressed: () {
+                    _mapController.move(
+                      _mapController.camera.center,
+                      _mapController.camera.zoom + 1,
+                    );
+                  },
+                  child: const Icon(Icons.add, color: Colors.black),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton(
+                  heroTag: "zoomOut",
+                  mini: true,
+                  backgroundColor: Colors.white,
+                  onPressed: () {
+                    _mapController.move(
+                      _mapController.camera.center,
+                      _mapController.camera.zoom - 1,
+                    );
+                  },
+                  child: const Icon(Icons.remove, color: Colors.black),
+                ),
+              ],
             ),
           ),
           Positioned(

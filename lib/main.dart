@@ -3,6 +3,8 @@ import 'package:emergency_response_safety_system_ambulance_side/utils/tracking_s
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/emergency_detail_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/patient_care_screen.dart';
@@ -25,51 +27,67 @@ class EmergencyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (context) => TrackingState(),
-      child: MaterialApp(
-        title: 'Ambulance Side - Emergency Response',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          primarySwatch: Colors.red,
-          fontFamily: 'Roboto',
-          scaffoldBackgroundColor: Colors.white,
-        ),
-        home: const AuthWrapper(),
-        routes: {
-          '/details': (context) => const EmergencyDetailScreen(),
-          '/care': (context) => const PatientCareScreen(),
-          '/history': (context) => const HistoryScreen(),
-          '/profile': (context) => const ProfileScreen(),
-          '/settings': (context) => const SettingsScreen(),
-          '/login': (context) => const LoginScreen(),
-        },
-        onGenerateRoute: (settings) {
-          if (settings.name == '/tracking') {
-            final args = settings.arguments as Map<String, dynamic>?;
-            if (args != null &&
-                args.containsKey('reportId') &&
-                args.containsKey('emergencyLat') &&
-                args.containsKey('emergencyLon')) {
-              return MaterialPageRoute(
-                builder:
-                    (context) => LiveTrackingScreen(
-                      reportId: args['reportId'],
-                      emergencyLat: args['emergencyLat'],
-                      emergencyLon: args['emergencyLon'],
-                    ),
-              );
-            } else {
-              debugPrint("Warning: Invalid tracking arguments: $args");
-              return MaterialPageRoute(
-                builder:
-                    (context) => const LiveTrackingScreen(
-                      reportId: 'dummy',
-                      emergencyLat: 0.0,
-                      emergencyLon: 0.0,
-                    ),
-              );
-            }
-          }
-          return null;
+      child: ScreenUtilInit(
+        designSize: const Size(408, 883),
+        minTextAdapt: true,
+        splitScreenMode: true,
+        builder: (context, child) {
+          debugPrint('ScreenUtilInit completed');
+          return MaterialApp(
+            title: 'Ambulance Side - Emergency Response',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              primarySwatch: Colors.red,
+              fontFamily: GoogleFonts.poppins().fontFamily,
+              scaffoldBackgroundColor: Colors.white,
+              textTheme: TextTheme(
+                bodyLarge: GoogleFonts.poppins(fontSize: 16.sp),
+                bodyMedium: GoogleFonts.poppins(fontSize: 14.sp),
+                titleLarge: GoogleFonts.poppins(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            home: const AuthWrapper(),
+            routes: {
+              '/details': (context) => const EmergencyDetailScreen(),
+              '/care': (context) => const PatientCareScreen(),
+              '/history': (context) => const HistoryScreen(),
+              '/profile': (context) => const ProfileScreen(),
+              '/settings': (context) => const SettingsScreen(),
+              '/login': (context) => const LoginScreen(),
+            },
+            onGenerateRoute: (settings) {
+              if (settings.name == '/tracking') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                if (args != null &&
+                    args.containsKey('reportId') &&
+                    args.containsKey('emergencyLat') &&
+                    args.containsKey('emergencyLon')) {
+                  return MaterialPageRoute(
+                    builder:
+                        (context) => LiveTrackingScreen(
+                          reportId: args['reportId'],
+                          emergencyLat: args['emergencyLat'],
+                          emergencyLon: args['emergencyLon'],
+                        ),
+                  );
+                } else {
+                  debugPrint("Warning: Invalid tracking arguments: $args");
+                  return MaterialPageRoute(
+                    builder:
+                        (context) => const LiveTrackingScreen(
+                          reportId: 'dummy',
+                          emergencyLat: 0.0,
+                          emergencyLon: 0.0,
+                        ),
+                  );
+                }
+              }
+              return null;
+            },
+          );
         },
       ),
     );

@@ -68,6 +68,14 @@
           }
         },
         {
+          "client_id": "459911736231-ml3aaggt755iemqtd1kd6pj614r4i82h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_response_safety_system_ambulance_side",
+            "certificate_hash": "20ba75258edf7ec743e557b04a533ecc0c546c5b"
+          }
+        },
+        {
           "client_id": "459911736231-qaokub1lvesipvg5oa79krq71bsf6n4n.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
