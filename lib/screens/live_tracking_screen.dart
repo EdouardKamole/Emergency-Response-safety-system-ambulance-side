@@ -3,6 +3,7 @@ import 'package:emergency_response_safety_system_ambulance_side/utils/tracking_s
 import 'package:emergency_response_safety_system_ambulance_side/widgets/bottom_nav.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -37,16 +38,16 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
   late Animation<double> _pulseAnimation;
   late Animation<double> _routeAnimation;
   StreamSubscription<DatabaseEvent>? _rescuerSubscription;
-  StreamSubscription<DatabaseEvent>?
-  _patientSubscription; // New: For victim location
+  StreamSubscription<DatabaseEvent>? _patientSubscription;
   StreamSubscription<Position>? _positionSubscription;
   final MapController _mapController = MapController();
   bool _isLoading = true;
   String? _errorMessage;
   DateTime? _lastRouteFetch;
   Position? _currentPosition;
-  bool _hasUserInteractedWithMap = false; // New: Track user interaction
-  double _lastZoom = 13.0; // New: Track zoom level
+  bool _hasUserInteractedWithMap = false;
+  double _lastZoom = 13.0;
+  Map<String, dynamic>? _victimDetails;
 
   final List<Map<String, dynamic>> _statuses = [
     {
@@ -72,7 +73,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     super.initState();
     _patientLocation = LatLng(widget.emergencyLat, widget.emergencyLon);
 
-    // Pulse animation for patient marker
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -81,7 +81,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // Route animation for polyline
     _routeController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
@@ -92,7 +91,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     ).animate(CurvedAnimation(parent: _routeController, curve: Curves.easeIn));
     _routeController.forward();
 
-    // Listen for map interactions
     _mapController.mapEventStream.listen((event) {
       if (event is MapEventMove) {
         _hasUserInteractedWithMap = true;
@@ -102,24 +100,89 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
       }
     });
 
-    // Initialize location services and Firebase listeners
     Future.microtask(() {
       if (!mounted) return;
       _requestLocationPermission();
       _listenToRescuerUpdates();
-      _listenToPatientUpdates(); // New: Listen for victim location
+      _listenToPatientUpdates();
+      _fetchVictimDetails();
     });
   }
 
   @override
   void dispose() {
     _rescuerSubscription?.cancel();
-    _patientSubscription?.cancel(); // New: Cancel victim subscription
+    _patientSubscription?.cancel();
     _positionSubscription?.cancel();
     _pulseController.dispose();
     _routeController.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchVictimDetails() async {
+    final database = FirebaseDatabase.instance.ref();
+    final firestore = FirebaseFirestore.instance;
+    try {
+      // Fetch report data from Realtime Database
+      final reportSnapshot =
+          await database.child('reports/${widget.reportId}').get();
+      if (!reportSnapshot.exists) {
+        setState(() {
+          _errorMessage = "No victim details found";
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final reportData = reportSnapshot.value as Map<dynamic, dynamic>;
+      final reportedBy = reportData['reportedBy']?.toString();
+
+      // Initialize victim details with report data
+      Map<String, dynamic> victimDetails = {
+        'type': reportData['type']?.toString() ?? 'Unknown',
+        'notes': reportData['notes']?.toString() ?? 'No notes provided',
+        'reportedBy': reportedBy ?? 'Unknown',
+        'timestamp': reportData['timestamp']?.toString() ?? 'N/A',
+        'fullName': 'Not provided',
+        'address': 'Not provided',
+        'phone': 'Not provided',
+        'emergencyContact': 'Not provided',
+        'bloodType': 'Not provided',
+        'allergies': 'Not provided',
+        'medicalConditions': 'Not provided',
+      };
+
+      // Fetch user data from Firestore if reportedBy is available
+      if (reportedBy != null && reportedBy.isNotEmpty) {
+        final userDoc =
+            await firestore.collection('users').doc(reportedBy).get();
+        if (userDoc.exists) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          victimDetails.addAll({
+            'fullName': userData['fullName']?.toString() ?? 'Not provided',
+            'address': userData['address']?.toString() ?? 'Not provided',
+            'phone': userData['phone']?.toString() ?? 'Not provided',
+            'emergencyContact':
+                userData['emergencyContact']?.toString() ?? 'Not provided',
+            'bloodType': userData['bloodType']?.toString() ?? 'Not provided',
+            'allergies': userData['allergies']?.toString() ?? 'Not provided',
+            'medicalConditions':
+                userData['medicalConditions']?.toString() ?? 'Not provided',
+          });
+        }
+      }
+
+      setState(() {
+        _victimDetails = victimDetails;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Error fetching victim details: $e";
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _requestLocationPermission() async {
@@ -153,7 +216,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     _positionSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // Update every 10 meters
+        distanceFilter: 10,
       ),
     ).listen(
       (Position position) async {
@@ -185,11 +248,21 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
         };
 
         try {
-          // Update Firebase
           await database
               .child('reports/${widget.reportId}/assignedRescuer/${user.uid}')
               .update(updateData);
           await database.child('activeRescuers/${user.uid}').update(updateData);
+          final reportStatus =
+              trackingState.getStatusStep(widget.reportId) == 0
+                  ? 'accepted'
+                  : trackingState.getStatusStep(widget.reportId) == 1
+                  ? 'arrived'
+                  : trackingState.getStatusStep(widget.reportId) == 2
+                  ? 'arrived'
+                  : 'completed';
+          await database.child('reports/${widget.reportId}').update({
+            'status': reportStatus,
+          });
           if (!_hasUserInteractedWithMap) {
             _generateRoutePoints();
             _recenterMap();
@@ -312,7 +385,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   eta ?? _calculateETA(latitude, longitude),
                 );
 
-                // Update status based on distance and Firebase data
                 final distance = Geolocator.distanceBetween(
                   latitude,
                   longitude,
@@ -330,8 +402,24 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   newStatusStep = 3; // Arrived at Hospital
                 } else if (status == 'arrived' && newStatusStep < 1) {
                   newStatusStep = 1;
+                } else if (status == 'arrived' && newStatusStep < 2) {
+                  newStatusStep = 2;
+                } else if (status == 'arrived' && newStatusStep < 3) {
+                  newStatusStep = 3;
                 }
                 trackingState.updateStatus(widget.reportId, newStatusStep);
+
+                final reportStatus =
+                    newStatusStep == 0
+                        ? 'accepted'
+                        : newStatusStep == 1
+                        ? 'arrived'
+                        : newStatusStep == 2
+                        ? 'arrived'
+                        : 'completed';
+                database.child('reports/${widget.reportId}').update({
+                  'status': reportStatus,
+                });
 
                 setState(() {
                   _isLoading = false;
@@ -373,15 +461,14 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
       _patientLocation.latitude,
       _patientLocation.longitude,
     );
-    // Assume average speed of 40 km/h (11.11 m/s) for urban ambulance travel
     final etaSeconds = (distance / 11.11).round();
-    return etaSeconds.clamp(60, 900); // 1–15 minutes
+    return etaSeconds.clamp(60, 900);
   }
 
   void _generateRoutePoints() async {
     if (_lastRouteFetch != null &&
         DateTime.now().difference(_lastRouteFetch!).inSeconds < 10) {
-      return; // Throttle route requests
+      return;
     }
     _lastRouteFetch = DateTime.now();
 
@@ -452,7 +539,6 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
           _errorMessage = null;
         });
       } else {
-        // Fallback to straight line
         trackingState.updateRoutePoints(widget.reportId, [
           rescuerLoc,
           _patientLocation,
@@ -478,7 +564,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = "Error fetching route, using direct path";
+          _errorMessage = "Failed to fetch route";
         });
       }
     }
@@ -490,11 +576,255 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
     if (rescuerLoc == null) return;
 
     final bounds = LatLngBounds.fromPoints([_patientLocation, rescuerLoc]);
-    _mapController.fitCamera(
-      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(100)),
+    _mapController.fitBounds(
+      bounds,
+      options: const FitBoundsOptions(padding: EdgeInsets.all(100)),
     );
-    _hasUserInteractedWithMap = false; // Reset interaction flag
-    _lastZoom = _mapController.camera.zoom; // Update zoom level
+    _hasUserInteractedWithMap = false;
+    _lastZoom = _mapController.camera.zoom;
+  }
+
+  Future<void> _updateStatus(int newStatusStep) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final trackingState = Provider.of<TrackingState>(context, listen: false);
+    final database = FirebaseDatabase.instance.ref();
+    final statusString = newStatusStep == 0 ? 'en_route' : 'arrived';
+    final reportStatus =
+        newStatusStep == 0
+            ? 'accepted'
+            : newStatusStep == 1
+            ? 'arrived'
+            : newStatusStep == 2
+            ? 'arrived'
+            : 'completed';
+
+    try {
+      await database
+          .child('reports/${widget.reportId}/assignedRescuer/${user.uid}')
+          .update({'status': statusString});
+      await database.child('activeRescuers/${user.uid}').update({
+        'status': statusString,
+      });
+      await database.child('reports/${widget.reportId}').update({
+        'status': reportStatus,
+      });
+      trackingState.updateStatus(widget.reportId, newStatusStep);
+      setState(() {
+        _errorMessage = null;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Error updating status: $e";
+      });
+    }
+  }
+
+  void _showVictimDetailsModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.4,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (_, controller) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: SingleChildScrollView(
+                controller: controller,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Victim Details',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    if (_victimDetails != null) ...[
+                      _buildDetailContainer(
+                        'Full Name',
+                        _victimDetails!['fullName'],
+                      ),
+                      _buildDetailContainer(
+                        'Address',
+                        _victimDetails!['address'],
+                      ),
+                      _buildDetailContainer('Phone', _victimDetails!['phone']),
+                      _buildDetailContainer(
+                        'Emergency Contact',
+                        _victimDetails!['emergencyContact'],
+                      ),
+                      _buildDetailContainer(
+                        'Blood Type',
+                        _victimDetails!['bloodType'],
+                      ),
+                      _buildDetailContainer(
+                        'Allergies',
+                        _victimDetails!['allergies'],
+                      ),
+                      _buildDetailContainer(
+                        'Medical Conditions',
+                        _victimDetails!['medicalConditions'],
+                      ),
+                      _buildDetailContainer(
+                        'Emergency Type',
+                        _victimDetails!['type'],
+                      ),
+                      _buildDetailContainer('Notes', _victimDetails!['notes']),
+                      _buildDetailContainer(
+                        'Reported By',
+                        _victimDetails!['reportedBy'],
+                      ),
+                      _buildDetailContainer(
+                        'Reported At',
+                        _victimDetails!['timestamp'],
+                      ),
+                    ] else
+                      Text(
+                        'No details available',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Close',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailContainer(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: ListTile(
+          title: Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[800],
+            ),
+          ),
+          subtitle: Text(
+            value,
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showStatusSelectionModal() {
+    final trackingState = Provider.of<TrackingState>(context, listen: false);
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Update Status',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 20),
+              ..._statuses.asMap().entries.map((entry) {
+                final index = entry.key;
+                final status = entry.value;
+                return ListTile(
+                  leading: Icon(status['icon'], color: status['color']),
+                  title: Text(
+                    status['text'],
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color:
+                          trackingState.getStatusStep(widget.reportId) == index
+                              ? status['color']
+                              : Colors.grey[800],
+                    ),
+                  ),
+                  onTap: () {
+                    _updateStatus(index);
+                    Navigator.pop(context);
+                  },
+                );
+              }).toList(),
+              const SizedBox(height: 10),
+              Center(
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildCustomMarker({
@@ -863,39 +1193,150 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                           Row(
                             children: [
                               Expanded(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: Colors.green[300]!,
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.call,
-                                        color: Colors.green[700],
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "Call Victim",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.green[700],
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (_victimDetails?['phone'] != null &&
+                                        _victimDetails!['phone'] !=
+                                            'Not provided') {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Phone call feature not implemented. Number: ${_victimDetails!['phone']}',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          backgroundColor: Colors.green,
                                         ),
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Victim phone number not available',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          backgroundColor: Colors.redAccent,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green[50],
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.green[300]!,
                                       ),
-                                    ],
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.call,
+                                          color: Colors.green[700],
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "Call Victim",
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.green[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 12),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: _showVictimDetailsModal,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue[50],
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.blue[300]!,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          color: Colors.blue[700],
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "Victim Details",
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.blue[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: _showStatusSelectionModal,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange[50],
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.orange[300]!,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.update,
+                                          color: Colors.orange[700],
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          "Update Status",
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.orange[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ],

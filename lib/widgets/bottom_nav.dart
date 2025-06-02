@@ -1,7 +1,7 @@
+// import 'package:emergency_response_safety_system_ambulance_side/screens/history_screen.dart';
 import 'package:flutter/material.dart';
 import '../screens/home_screen.dart';
 import '../screens/live_tracking_screen.dart';
-import '../screens/patient_care_screen.dart';
 import '../screens/profile_screen.dart';
 
 class BottomNavWrapper extends StatefulWidget {
@@ -75,7 +75,7 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
     final screens = [
       HomeScreen(onReportSelected: _updateSelectedReport),
       _getTrackingScreen(),
-      const PatientCareScreen(),
+      // const HistoryScreen(),
       const ProfileScreen(),
     ];
 
@@ -126,11 +126,11 @@ class _BottomNavWrapperState extends State<BottomNavWrapper> {
                   activeIcon: Icon(Icons.map),
                   label: 'Track',
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.medical_services_outlined),
-                  activeIcon: Icon(Icons.medical_services),
-                  label: 'Care',
-                ),
+                // BottomNavigationBarItem(
+                //   icon: Icon(Icons.pending_actions_sharp),
+                //   activeIcon: Icon(Icons.pending),
+                //   label: 'History',
+                // ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person_outline),
                   activeIcon: Icon(Icons.person),

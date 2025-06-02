@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:emergency_response_safety_system_ambulance_side/screens/emergency_detail_screen.dart';
-import 'package:emergency_response_safety_system_ambulance_side/screens/patient_care_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/history_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/profile_screen.dart';
 import 'package:emergency_response_safety_system_ambulance_side/screens/settings_screen.dart';
@@ -51,8 +49,6 @@ class EmergencyApp extends StatelessWidget {
             ),
             home: const AuthWrapper(),
             routes: {
-              '/details': (context) => const EmergencyDetailScreen(),
-              '/care': (context) => const PatientCareScreen(),
               '/history': (context) => const HistoryScreen(),
               '/profile': (context) => const ProfileScreen(),
               '/settings': (context) => const SettingsScreen(),
