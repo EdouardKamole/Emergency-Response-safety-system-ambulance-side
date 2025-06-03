@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:emergency_response_safety_system_ambulance_side/screens/live_tracking_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -582,17 +582,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             children: [
                               Text(
                                 "Emergency Response",
-                                style: GoogleFonts.inter(
-                                  fontSize: isSmallScreen ? 14 : 16,
+                                style: GoogleFonts.poppins(
+                                  fontSize: isSmallScreen ? 14.sp : 15.sp,
                                   color: const Color(0xFF64748B),
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              SizedBox(height: 4.h),
                               Text(
                                 "Active Reports",
-                                style: GoogleFonts.inter(
-                                  fontSize: isSmallScreen ? 14 : 18,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13.sp,
                                   fontWeight: FontWeight.w700,
                                   color: const Color(0xFF1A1D29),
                                 ),
@@ -631,7 +631,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 size: isSmallScreen ? 16 : 20,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: 8.w),
                             // Refresh Button
                             Container(
                               padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
@@ -727,8 +727,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       activeEmergency != null
                                           ? "Active Emergency"
                                           : "Emergency Alerts",
-                                      style: GoogleFonts.inter(
-                                        fontSize: isSmallScreen ? 16 : 20,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 13.5.sp,
                                         fontWeight: FontWeight.w700,
                                         color: const Color(0xFF1A1D29),
                                       ),
@@ -737,8 +737,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                       activeEmergency != null
                                           ? "You are responding to an emergency"
                                           : "Real-time emergency responses",
-                                      style: GoogleFonts.inter(
-                                        fontSize: isSmallScreen ? 12 : 14,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: isSmallScreen ? 12.sp : 14.sp,
                                         color: const Color(0xFF64748B),
                                       ),
                                     ),
@@ -759,8 +759,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                   ),
                                   child: Text(
                                     "${emergencyReports.length} Active",
-                                    style: GoogleFonts.inter(
-                                      fontSize: isSmallScreen ? 10 : 12,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: isSmallScreen ? 10.sp : 12.sp,
                                       fontWeight: FontWeight.w600,
                                       color: const Color(0xFFEF4444),
                                     ),
@@ -781,8 +781,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
                             child: Text(
                               errorMessage!,
-                              style: GoogleFonts.inter(
-                                fontSize: isSmallScreen ? 12 : 14,
+                              style: GoogleFonts.poppins(
+                                fontSize: isSmallScreen ? 12.sp : 14.sp,
                                 color: const Color(0xFFEF4444),
                               ),
                               textAlign: TextAlign.center,
@@ -798,8 +798,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
                             child: Text(
                               "No active emergency reports",
-                              style: GoogleFonts.inter(
-                                fontSize: isSmallScreen ? 12 : 14,
+                              style: GoogleFonts.poppins(
+                                fontSize: isSmallScreen ? 12.sp : 14.sp,
                                 color: const Color(0xFF64748B),
                               ),
                               textAlign: TextAlign.center,
@@ -810,7 +810,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             padding: EdgeInsets.symmetric(
-                              horizontal: isSmallScreen ? 16 : 24,
+                              horizontal: isSmallScreen ? 14.sp : 18.sp,
                             ),
                             itemCount: emergencyReports.length,
                             itemBuilder:
@@ -843,8 +843,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   ) {
     return Container(
       margin: EdgeInsets.symmetric(
-        horizontal: isSmallScreen ? 16 : 24,
-        vertical: isSmallScreen ? 12 : 16,
+        horizontal: isSmallScreen ? 16.w : 24.w,
+        vertical: isSmallScreen ? 12.h : 16.h,
       ),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -886,8 +886,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   child: Text(
                     emergency['severity'] as String,
-                    style: GoogleFonts.inter(
-                      fontSize: isSmallScreen ? 8 : 10,
+                    style: GoogleFonts.poppins(
+                      fontSize: 10.sp,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                       letterSpacing: 0.5,
@@ -897,23 +897,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 const Spacer(),
                 Text(
                   emergency['time'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: isSmallScreen ? 10 : 12,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.sp,
                     color: const Color(0xFF64748B),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: isSmallScreen ? 8 : 12),
+            SizedBox(height: 6.sp),
             Text(
               emergency['type'] as String,
-              style: GoogleFonts.inter(
-                fontSize: isSmallScreen ? 16 : 18,
+              style: GoogleFonts.poppins(
+                fontSize: 12.5.sp,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF1A1D29),
               ),
             ),
-            SizedBox(height: isSmallScreen ? 6 : 8),
+            SizedBox(height: 6.h),
             Row(
               children: [
                 Icon(
@@ -925,8 +925,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Expanded(
                   child: Text(
                     emergency['location'] as String,
-                    style: GoogleFonts.inter(
-                      fontSize: isSmallScreen ? 12 : 14,
+                    style: GoogleFonts.poppins(
+                      fontSize: isSmallScreen ? 12.sp : 14.sp,
                       color: const Color(0xFF64748B),
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -943,8 +943,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   child: Text(
                     emergency['distance'] as String,
-                    style: GoogleFonts.inter(
-                      fontSize: isSmallScreen ? 10 : 12,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.sp,
                       fontWeight: FontWeight.w600,
                       color: emergency['color'] as Color,
                     ),
@@ -952,9 +952,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
+            SizedBox(height: 8.h),
             Container(
-              height: isSmallScreen ? 40 : 44,
+              height: isSmallScreen ? 40.h : 44.h,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
@@ -971,9 +971,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 label: Text(
                   "Continue to Tracking",
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.poppins(
                     fontWeight: FontWeight.w600,
-                    fontSize: isSmallScreen ? 12 : 14,
+                    fontSize: 12.sp,
                   ),
                 ),
                 onPressed: _continueToTracking,
@@ -1038,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   child: Text(
                     emergency['severity'] as String,
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.poppins(
                       fontSize: isSmallScreen ? 8 : 10,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
@@ -1049,23 +1049,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 const Spacer(),
                 Text(
                   emergency['time'] as String,
-                  style: GoogleFonts.inter(
-                    fontSize: isSmallScreen ? 10 : 12,
+                  style: GoogleFonts.poppins(
+                    fontSize: isSmallScreen ? 10.sp : 12.sp,
                     color: const Color(0xFF64748B),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: isSmallScreen ? 8 : 12),
+            SizedBox(height: isSmallScreen ? 8.h : 12.h),
             Text(
               emergency['type'] as String,
-              style: GoogleFonts.inter(
-                fontSize: isSmallScreen ? 16 : 18,
+              style: GoogleFonts.poppins(
+                fontSize: 14.sp,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF1A1D29),
               ),
             ),
-            SizedBox(height: isSmallScreen ? 6 : 8),
+            SizedBox(height: 4.h),
             Row(
               children: [
                 Icon(
@@ -1077,8 +1077,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Expanded(
                   child: Text(
                     emergency['location'] as String,
-                    style: GoogleFonts.inter(
-                      fontSize: isSmallScreen ? 12 : 14,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13.sp,
                       color: const Color(0xFF64748B),
                     ),
                     overflow: TextOverflow.ellipsis,
@@ -1095,7 +1095,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   child: Text(
                     emergency['distance'] as String,
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.poppins(
                       fontSize: isSmallScreen ? 10 : 12,
                       fontWeight: FontWeight.w600,
                       color: emergency['color'] as Color,
@@ -1104,12 +1104,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            SizedBox(height: isSmallScreen ? 12 : 16),
+            SizedBox(height: isSmallScreen ? 12.h : 16.h),
             Row(
               children: [
                 Expanded(
                   child: Container(
-                    height: isSmallScreen ? 40 : 44,
+                    height: isSmallScreen ? 40.h : 44.h,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -1126,9 +1126,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ),
                       label: Text(
                         "Accept",
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
-                          fontSize: isSmallScreen ? 12 : 14,
+                          fontSize: 12.sp,
                         ),
                       ),
                       onPressed:
@@ -1148,10 +1148,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12.w),
                 Container(
-                  height: isSmallScreen ? 40 : 44,
-                  width: isSmallScreen ? 40 : 44,
+                  height: isSmallScreen ? 40.h : 44.h,
+                  width: isSmallScreen ? 40.w : 44.w,
                   decoration: BoxDecoration(
                     color: const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(12),

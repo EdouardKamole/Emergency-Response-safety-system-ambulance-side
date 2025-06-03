@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -304,7 +305,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ],
               ),
-              const SizedBox(width: 20),
+              SizedBox(width: 20.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -312,45 +313,27 @@ class _ProfileScreenState extends State<ProfileScreen>
                     Text(
                       userData?['fullName'] ?? 'Loading...',
                       style: GoogleFonts.poppins(
-                        fontSize: 22,
+                        fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 1.h),
                     Text(
                       userData?['role'] ?? '',
                       style: GoogleFonts.poppins(
-                        fontSize: 16,
+                        fontSize: 13.sp,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
 
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _isOnDuty ? Colors.green : Colors.orange,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _isOnDuty ? "ON DUTY" : "OFF DUTY",
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                    SizedBox(height: 8.h),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: 20.h),
         ],
       ),
     );
@@ -367,11 +350,11 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Column(
         children: [
           Icon(icon, color: Colors.white, size: 20),
-          const SizedBox(height: 4),
+          SizedBox(height: 4.h),
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 14.sp,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
@@ -379,7 +362,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           Text(
             title,
             style: GoogleFonts.poppins(
-              fontSize: 10,
+              fontSize: 12.sp,
               color: Colors.white.withOpacity(0.8),
             ),
             textAlign: TextAlign.center,
@@ -410,12 +393,12 @@ class _ProfileScreenState extends State<ProfileScreen>
           Text(
             "Personal Information",
             style: GoogleFonts.poppins(
-              fontSize: 18,
+              fontSize: 15.sp,
               fontWeight: FontWeight.w600,
               color: Colors.grey[800],
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           _buildInfoRow(
             Icons.phone,
             "Phone",
@@ -444,7 +427,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
             child: Icon(icon, color: Colors.redAccent, size: 20),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,153 +435,19 @@ class _ProfileScreenState extends State<ProfileScreen>
                 Text(
                   label,
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 12.sp,
                     color: Colors.grey[600],
                   ),
                 ),
                 Text(
                   value,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 14.sp,
                     fontWeight: FontWeight.w500,
                     color: Colors.grey[800],
                   ),
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecentActivity(List<Map<String, dynamic>> activities) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Recent Activity",
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[800],
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("View All - Coming soon!")),
-                  );
-                },
-                child: Text(
-                  "View All",
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (activities.isEmpty)
-            Text(
-              "No recent activities",
-              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
-            )
-          else
-            ...activities
-                .map((activity) => _buildActivityItem(activity))
-                .toList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(Map<String, dynamic> activity) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _hexToColor(activity['color']).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(
-              _getIconFromString(activity['icon']),
-              color: _hexToColor(activity['color']),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  activity['title'],
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                Text(
-                  activity['description'],
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  activity['time'],
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: Colors.grey[500],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              activity['status'],
-              style: GoogleFonts.poppins(
-                fontSize: 10,
-                color: Colors.green[700],
-                fontWeight: FontWeight.w500,
-              ),
             ),
           ),
         ],
@@ -627,12 +476,12 @@ class _ProfileScreenState extends State<ProfileScreen>
           Text(
             "Settings & Actions",
             style: GoogleFonts.poppins(
-              fontSize: 18,
+              fontSize: 16.sp,
               fontWeight: FontWeight.w600,
               color: Colors.grey[800],
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.h),
           _buildSettingsTile(
             Icons.notifications,
             "Notifications",
@@ -678,11 +527,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       title: Text(
         title,
-        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500),
+        style: GoogleFonts.poppins(
+          fontSize: 14.sp,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       subtitle: Text(
         subtitle,
-        style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
+        style: GoogleFonts.poppins(fontSize: 12.sp, color: Colors.grey[600]),
       ),
       trailing: Switch(
         value: value,
@@ -705,11 +557,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       ),
       title: Text(
         title,
-        style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w500),
+        style: GoogleFonts.poppins(
+          fontSize: 14.sp,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       trailing: Icon(
         Icons.arrow_forward_ios,
-        size: 16,
+        size: 16.sp,
         color: Colors.grey[400],
       ),
       onTap: () => _handleAction(title),
@@ -791,10 +646,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                       children: [
                         _buildProfileHeader(userData, stats),
                         _buildInfoSection(userData),
-
-                        _buildRecentActivity(activities),
                         _buildSettingsSection(),
-                        const SizedBox(height: 20),
+                        SizedBox(height: 20.sp),
                       ],
                     ),
                   ),

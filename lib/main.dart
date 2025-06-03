@@ -30,7 +30,6 @@ class EmergencyApp extends StatelessWidget {
         minTextAdapt: true,
         splitScreenMode: true,
         builder: (context, child) {
-          debugPrint('ScreenUtilInit completed');
           return MaterialApp(
             title: 'Ambulance Side - Emergency Response',
             debugShowCheckedModeBanner: false,

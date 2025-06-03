@@ -6,6 +6,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
@@ -645,13 +646,15 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   children: [
                     Text(
                       'Victim Details',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                       style: GoogleFonts.poppins(
-                        fontSize: 20,
+                        fontSize: 14.sp,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey[800],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20.sp),
                     if (_victimDetails != null) ...[
                       _buildDetailContainer(
                         'Full Name',
@@ -695,11 +698,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                       Text(
                         'No details available',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 14.sp,
                           color: Colors.grey[600],
                         ),
                       ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20.sp),
                     Center(
                       child: ElevatedButton(
                         onPressed: () => Navigator.pop(context),
@@ -712,7 +715,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                         child: Text(
                           'Close',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 14.sp,
                             color: Colors.white,
                             fontWeight: FontWeight.w500,
                           ),
@@ -741,14 +744,17 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
           title: Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 14.sp,
               fontWeight: FontWeight.w600,
               color: Colors.grey[800],
             ),
           ),
           subtitle: Text(
             value,
-            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            style: GoogleFonts.poppins(
+              fontSize: 14.sp,
+              color: Colors.grey[600],
+            ),
           ),
         ),
       ),
@@ -772,12 +778,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
               Text(
                 'Update Status',
                 style: GoogleFonts.poppins(
-                  fontSize: 20,
+                  fontSize: 14.sp,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey[800],
                 ),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: 20.sp),
               ..._statuses.asMap().entries.map((entry) {
                 final index = entry.key;
                 final status = entry.value;
@@ -786,7 +792,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   title: Text(
                     status['text'],
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 14.sp,
                       fontWeight: FontWeight.w500,
                       color:
                           trackingState.getStatusStep(widget.reportId) == index
@@ -800,7 +806,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   },
                 );
               }).toList(),
-              const SizedBox(height: 10),
+              SizedBox(height: 10.h),
               Center(
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
@@ -813,7 +819,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   child: Text(
                     'Cancel',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 14.sp,
                       color: Colors.white,
                       fontWeight: FontWeight.w500,
                     ),
@@ -969,7 +975,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                     ),
                   ),
                 ),
-                const SizedBox(width: 15),
+                SizedBox(width: 15.w),
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -990,7 +996,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                     child: Text(
                       "Live Tracking",
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 15.sp,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey[800],
                       ),
@@ -1026,7 +1032,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   },
                   child: const Icon(Icons.add, color: Colors.black),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: 10.h),
                 FloatingActionButton(
                   heroTag: "zoomOut",
                   mini: true,
@@ -1066,7 +1072,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                       child: Text(
                         _errorMessage!,
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 14.sp,
                           color: Colors.red,
                         ),
                         textAlign: TextAlign.center,
@@ -1110,7 +1116,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                   size: 24,
                                 ),
                               ),
-                              const SizedBox(width: 15),
+                              SizedBox(width: 14.sp),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1120,16 +1126,16 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                         widget.reportId,
                                       )]["text"],
                                       style: GoogleFonts.poppins(
-                                        fontSize: 18,
+                                        fontSize: 12.5.sp,
                                         fontWeight: FontWeight.w600,
                                         color: Colors.grey[800],
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    SizedBox(height: 4.h),
                                     Text(
                                       "Rescuer Unit #${FirebaseAuth.instance.currentUser?.uid.substring(0, 6)}",
                                       style: GoogleFonts.poppins(
-                                        fontSize: 14,
+                                        fontSize: 12.sp,
                                         color: Colors.grey[600],
                                       ),
                                     ),
@@ -1153,7 +1159,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                 child: Text(
                                   "ETA: ${(trackingState.getEtaSeconds(widget.reportId) ~/ 60).clamp(1, 15)} mins",
                                   style: GoogleFonts.poppins(
-                                    fontSize: 14,
+                                    fontSize: 11.sp,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.white,
                                   ),
@@ -1161,9 +1167,9 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                               ),
                             ],
                           ),
-                          const SizedBox(height: 15),
+                          SizedBox(height: 15.h),
                           Container(
-                            height: 6,
+                            height: 6.h,
                             decoration: BoxDecoration(
                               color: Colors.grey[200],
                               borderRadius: BorderRadius.circular(3),
@@ -1189,7 +1195,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          SizedBox(height: 10.h),
                           Row(
                             children: [
                               Expanded(
@@ -1205,7 +1211,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                           content: Text(
                                             'Phone call feature not implemented. Number: ${_victimDetails!['phone']}',
                                             style: GoogleFonts.poppins(
-                                              fontSize: 14,
+                                              fontSize: 14.sp,
                                             ),
                                           ),
                                           backgroundColor: Colors.green,
@@ -1219,7 +1225,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                           content: Text(
                                             'Victim phone number not available',
                                             style: GoogleFonts.poppins(
-                                              fontSize: 14,
+                                              fontSize: 14.sp,
                                             ),
                                           ),
                                           backgroundColor: Colors.redAccent,
@@ -1247,11 +1253,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                           color: Colors.green[700],
                                           size: 20,
                                         ),
-                                        const SizedBox(width: 8),
+                                        SizedBox(width: 3.w),
                                         Text(
                                           "Call Victim",
                                           style: GoogleFonts.poppins(
-                                            fontSize: 14,
+                                            fontSize: 10.sp,
                                             fontWeight: FontWeight.w500,
                                             color: Colors.green[700],
                                           ),
@@ -1261,7 +1267,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 6.w),
                               Expanded(
                                 child: GestureDetector(
                                   onTap: _showVictimDetailsModal,
@@ -1285,11 +1291,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                           color: Colors.blue[700],
                                           size: 20,
                                         ),
-                                        const SizedBox(width: 8),
+                                        SizedBox(width: 8.w),
                                         Text(
                                           "Victim Details",
                                           style: GoogleFonts.poppins(
-                                            fontSize: 14,
+                                            fontSize: 10.sp,
                                             fontWeight: FontWeight.w500,
                                             color: Colors.blue[700],
                                           ),
@@ -1299,7 +1305,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: 6.w),
                               Expanded(
                                 child: GestureDetector(
                                   onTap: _showStatusSelectionModal,
@@ -1323,11 +1329,11 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                                           color: Colors.orange[700],
                                           size: 20,
                                         ),
-                                        const SizedBox(width: 8),
+                                        SizedBox(width: 8.h),
                                         Text(
                                           "Update Status",
                                           style: GoogleFonts.poppins(
-                                            fontSize: 14,
+                                            fontSize: 10.sp,
                                             fontWeight: FontWeight.w500,
                                             color: Colors.orange[700],
                                           ),
